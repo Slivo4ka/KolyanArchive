@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 import ZIPFoundation
+import WebKit
 
 struct HomeView: View {
 
@@ -697,11 +698,20 @@ struct ImageGalleryView: View {
                 Color.black
                     .ignoresSafeArea()
 
-                ArchiveImagePage(
-                    archiveURL: archiveURL,
-                    item: items[selectedIndex],
-                    isZoomed: $isZoomed
-                )
+                Group {
+                    if items[selectedIndex].fileExtension == "gif" {
+                        ArchiveGIFView(
+                            archiveURL: archiveURL,
+                            item: items[selectedIndex]
+                        )
+                    } else {
+                        ArchiveImagePage(
+                            archiveURL: archiveURL,
+                            item: items[selectedIndex],
+                            isZoomed: $isZoomed
+                        )
+                    }
+                }
                 .id(selectedIndex)
                 .frame(
                     width: geometry.size.width,
@@ -1030,6 +1040,107 @@ private struct ArchiveImagePage: View {
         } catch {
             print("Image loading error: \(error)")
         }
+    }
+}
+
+private struct ArchiveGIFView: UIViewRepresentable {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(
+            frame: .zero,
+            configuration: configuration
+        )
+
+        webView.isOpaque = false
+        webView.backgroundColor = .black
+        webView.scrollView.backgroundColor = .black
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.loadedPath != item.path else {
+            return
+        }
+
+        context.coordinator.loadedPath = item.path
+
+        do {
+            let archive = try Archive(
+                url: archiveURL,
+                accessMode: .read
+            )
+
+            guard let entry = archive.first(where: {
+                $0.path == item.path
+            }), entry.type == .file else {
+                return
+            }
+
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("gif")
+
+            try archive.extract(entry, to: temporaryURL)
+
+            let data = try Data(contentsOf: temporaryURL)
+            try? FileManager.default.removeItem(at: temporaryURL)
+
+            let base64 = data.base64EncodedString()
+
+            let html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport"
+                content="width=device-width, initial-scale=1.0,
+                maximum-scale=1.0, user-scalable=no">
+                <style>
+                    html, body {
+                        margin: 0;
+                        padding: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: black;
+                        overflow: hidden;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                    }
+
+                    img {
+                        max-width: 100%;
+                        max-height: 100%;
+                        object-fit: contain;
+                    }
+                </style>
+            </head>
+            <body>
+                <img src="data:image/gif;base64,\(base64)">
+            </body>
+            </html>
+            """
+
+            webView.loadHTMLString(html, baseURL: nil)
+
+        } catch {
+            context.coordinator.loadedPath = nil
+            print("GIF loading error: \(error)")
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var loadedPath: String?
     }
 }
 
