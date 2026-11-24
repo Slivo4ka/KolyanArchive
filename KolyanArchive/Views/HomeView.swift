@@ -1,6 +1,8 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
+import ZIPFoundation
 
 struct HomeView: View {
 
@@ -12,6 +14,9 @@ struct HomeView: View {
 
     @State private var currentDirectoryPath = ""
     @State private var entries: [ArchiveEntry] = []
+    @State private var previewImage: UIImage?
+    @State private var previewImageName = ""
+    @State private var isImagePreviewPresented = false
 
     @State private var message = "Выбери ZIP-архив через кнопку выше."
 
@@ -68,6 +73,30 @@ struct HomeView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(errorMessage)
+            }
+            .sheet(isPresented: $isImagePreviewPresented) {
+                NavigationStack {
+                    ZStack {
+                        Color.black.ignoresSafeArea()
+
+                        if let previewImage {
+                            Image(uiImage: previewImage)
+                                .resizable()
+                                .scaledToFit()
+                                .padding()
+                        }
+                    }
+                    .navigationTitle(previewImageName)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Готово") {
+                                isImagePreviewPresented = false
+                            }
+                        }
+                    }
+                }
+                .preferredColorScheme(.dark)
             }
         }
         .tint(.white)
@@ -205,6 +234,8 @@ private var extractArchiveButton: some View {
         Button {
             if entry.isDirectory {
                 openDirectory(entry)
+            } else if ["jpg", "jpeg", "png", "gif", "heic", "webp"].contains(entry.fileExtension) {
+                openImage(entry)
             }
         } label: {
             HStack(spacing: 12) {
@@ -239,9 +270,61 @@ private var extractArchiveButton: some View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!entry.isDirectory)
+        .disabled(
+            !entry.isDirectory &&
+            !["jpg", "jpeg", "png", "gif", "heic", "webp"].contains(entry.fileExtension)
+        )
     }
+    // MARK: - Image preview
 
+private func openImage(_ entry: ArchiveEntry) {
+    guard let archiveURL else { return }
+
+    do {
+        let archive = try Archive(
+            url: archiveURL,
+            accessMode: .read
+        )
+
+        guard let archiveEntry = archive.first(where: {
+            $0.path == entry.path
+        }) else {
+            throw ArchiveServiceError.archiveNotFound
+        }
+
+        guard archiveEntry.type == .file else {
+            throw ArchiveServiceError.archiveNotFound
+        }
+
+        let previewDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("KolyanArchivePreviews")
+
+        try FileManager.default.createDirectory(
+            at: previewDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let previewURL = previewDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(entry.fileExtension)
+
+        try archive.extract(
+            archiveEntry,
+            to: previewURL
+        )
+
+        guard let image = UIImage(contentsOfFile: previewURL.path) else {
+            throw ArchiveServiceError.archiveNotFound
+        }
+
+        previewImage = image
+        previewImageName = entry.name
+        isImagePreviewPresented = true
+
+    } catch {
+        showError(error)
+    }
+}
     // MARK: - Directory navigation
 
     private func openDirectory(_ entry: ArchiveEntry) {
