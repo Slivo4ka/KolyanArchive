@@ -4,7 +4,7 @@ import SwiftUI
 struct KolyanArchiveApp: App {
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            SplashRootView()
                 .preferredColorScheme(.dark)
         }
     }
