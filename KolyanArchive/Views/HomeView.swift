@@ -251,22 +251,64 @@ private var extractArchiveButton: some View {
                     in: RoundedRectangle(cornerRadius: 13)
                 )
             }            
+            
             if displayedEntries.isEmpty {
-                ContentUnavailableView(
-                    tr(
-                        isSearching ? "Ничего не найдено" : "Нет содержимого",
-                        isSearching ? "No results found" : "No contents"
-                    ),
-                    systemImage: isSearching ? "magnifyingglass" : "doc.zipper",
-                    description: Text(
-                        isSearching
-                            ? tr("Попробуй другое название или путь.", "Try another name or path.")
-                            : message
-                    )
-                )
-                .frame(maxWidth: .infinity, minHeight: 190)
+                if isSearching {
+                    VStack(spacing: 14) {
+                        ZStack(alignment: .bottomTrailing) {
+                            Image(systemName: "doc.zipper")
+                                .font(.system(size: 58, weight: .medium))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.cyan, .blue, .indigo],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .shadow(color: .cyan.opacity(0.35), radius: 12)
 
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 23, weight: .semibold))
+                                .foregroundStyle(.cyan)
+                                .padding(8)
+                                .background(
+                                    Color(red: 0.035, green: 0.043, blue: 0.075),
+                                    in: Circle()
+                                )
+                                .overlay {
+                                    Circle()
+                                        .stroke(.cyan.opacity(0.7), lineWidth: 1.5)
+                                }
+                                .offset(x: 10, y: 7)
+                        }
+                        .frame(height: 90)
+
+                        Text(tr("Ничего не найдено", "No results found"))
+                            .font(.headline)
+                            .foregroundStyle(.white)
+
+                        Text(
+                            tr(
+                                "Попробуй другое название или путь.",
+                                "Try another name or path."
+                            )
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 190)
+                    .padding(.vertical, 8)
+                } else {
+                    ContentUnavailableView(
+                        tr("Нет содержимого", "No contents"),
+                        systemImage: "doc.zipper",
+                        description: Text(message)
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 190)
+                }
             } else {
+
 
                 ForEach(displayedEntries) { entry in
                     archiveEntryRow(entry)
