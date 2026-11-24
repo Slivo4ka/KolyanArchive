@@ -419,6 +419,9 @@ private func openImage(_ entry: ArchiveEntry) {
                 of: copiedURL
             )
 
+            previewImages = []
+            previewStartIndex = 0
+            isImagePreviewPresented = false
             archiveURL = copiedURL
             archiveName = sourceURL.lastPathComponent
             currentDirectoryPath = ""
@@ -475,6 +478,16 @@ private func extractToSelectedFolder(
     } catch {
         showError(error)
     }
+}
+private func closeArchive() {
+    archiveURL = nil
+    archiveName = "Архив не выбран"
+    currentDirectoryPath = ""
+    entries = []
+    previewImages = []
+    previewStartIndex = 0
+    isImagePreviewPresented = false
+    message = "Выбери ZIP-архив через кнопку выше."
 }
 }
 struct ArchiveImage: Identifiable {
@@ -633,15 +646,5 @@ private struct ArchiveImagePage: View {
         } catch {
             print("Ошибка загрузки изображения: \(error)")
         }
-    }
-    private func closeArchive() {
-        archiveURL = nil
-        archiveName = "Архив не выбран"
-        currentDirectoryPath = ""
-        entries = []
-        previewImages = []
-        previewStartIndex = 0
-        isImagePreviewPresented = false
-        message = "Выбери ZIP-архив через кнопку выше."
-    }
+    }  
 }
