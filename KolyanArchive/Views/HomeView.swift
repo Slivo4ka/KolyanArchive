@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import UIKit
 import ZIPFoundation
 import WebKit
+import PDFKit
 
 struct HomeView: View {
 
@@ -361,7 +362,7 @@ private var extractArchiveButton: some View {
         Button {
             if entry.isDirectory {
                 openDirectory(entry)
-            } else if ["jpg", "jpeg", "png", "gif", "heic", "webp"].contains(entry.fileExtension) {
+            } else if ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf"].contains(entry.fileExtension) {
                 openImage(entry)
             }
         } label: {
@@ -399,7 +400,7 @@ private var extractArchiveButton: some View {
         .buttonStyle(.plain)
         .disabled(
             !entry.isDirectory &&
-            !["jpg", "jpeg", "png", "gif", "heic", "webp"].contains(entry.fileExtension)
+            !["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf"].contains(entry.fileExtension)
         )
     }
     // MARK: - Image preview
@@ -407,7 +408,7 @@ private var extractArchiveButton: some View {
 private func openImage(_ entry: ArchiveEntry) {
     guard let archiveURL else { return }
 
-    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp"]
+    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf"]
 
     let images = displayedEntries
         .filter {
@@ -704,6 +705,11 @@ struct ImageGalleryView: View {
                             archiveURL: archiveURL,
                             item: items[selectedIndex]
                         )
+                    } else if items[selectedIndex].fileExtension == "pdf" {
+                        ArchivePDFView(
+                            archiveURL: archiveURL,
+                            item: items[selectedIndex]
+                        )
                     } else {
                         ArchiveImagePage(
                             archiveURL: archiveURL,
@@ -712,6 +718,7 @@ struct ImageGalleryView: View {
                         )
                     }
                 }
+
                 .id(selectedIndex)
                 .frame(
                     width: geometry.size.width,
@@ -1132,6 +1139,81 @@ private struct ArchiveGIFView: UIViewRepresentable {
         } catch {
             context.coordinator.loadedPath = nil
             print("GIF loading error: \(error)")
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var loadedPath: String?
+    }
+}
+
+private struct ArchivePDFView: UIViewRepresentable {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+
+    func makeUIView(context: Context) -> PDFView {
+        let pdfView = PDFView()
+
+        pdfView.backgroundColor = .black
+        pdfView.documentView?.backgroundColor = .black
+
+        pdfView.autoScales = true
+        pdfView.displayMode = .singlePageContinuous
+        pdfView.displayDirection = .vertical
+        pdfView.usePageViewController(false)
+
+        pdfView.minScaleFactor = 0.5
+        pdfView.maxScaleFactor = 5.0
+
+        return pdfView
+    }
+
+    func updateUIView(_ pdfView: PDFView, context: Context) {
+        guard context.coordinator.loadedPath != item.path else {
+            return
+        }
+
+        context.coordinator.loadedPath = item.path
+
+        do {
+            let archive = try Archive(
+                url: archiveURL,
+                accessMode: .read
+            )
+
+            guard let entry = archive.first(where: {
+                $0.path == item.path
+            }), entry.type == .file else {
+                return
+            }
+
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("pdf")
+
+            try archive.extract(entry, to: temporaryURL)
+
+            defer {
+                try? FileManager.default.removeItem(at: temporaryURL)
+            }
+
+            let data = try Data(contentsOf: temporaryURL)
+
+            guard let document = PDFDocument(data: data) else {
+                return
+            }
+
+            pdfView.document = document
+            pdfView.goToFirstPage(nil)
+
+        } catch {
+            context.coordinator.loadedPath = nil
+            print("PDF loading error: \(error)")
         }
     }
 
