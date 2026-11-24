@@ -23,9 +23,9 @@ struct SplashScreenView: View {
                 .ignoresSafeArea()
                 .onAppear {
                     Task {
-                        try? await Task.sleep(for: .milliseconds(500))
+                        try? await Task.sleep(for: .milliseconds(200))
 
-                        withAnimation(.easeInOut(duration: 0.8)) {
+                        withAnimation(.easeInOut(duration: 0.6)) {
                             scale = 1.22
                         }
                     }
@@ -36,8 +36,11 @@ struct SplashScreenView: View {
     }
 }
 
+
 struct SplashRootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showSplash = true
+    @State private var splashID = UUID()
 
     var body: some View {
         ZStack {
@@ -45,10 +48,11 @@ struct SplashRootView: View {
 
             if showSplash {
                 SplashScreenView()
+                    .id(splashID)
                     .zIndex(1)
                     .transition(.opacity)
                     .task {
-                        try? await Task.sleep(for: .milliseconds(1900))
+                        try? await Task.sleep(for: .milliseconds(1400))
 
                         withAnimation(.easeOut(duration: 0.3)) {
                             showSplash = false
@@ -57,5 +61,12 @@ struct SplashRootView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && !showSplash {
+                splashID = UUID()
+                showSplash = true
+            }
+        }
     }
 }
+

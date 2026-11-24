@@ -9,7 +9,7 @@ struct HomeView: View {
     @State private var isImporterPresented = false
     @State private var isChoosingDestination = false
 
-    @State private var isEnglish = false
+    @AppStorage("isEnglish") private var isEnglish = false
 
     @State private var archiveName = "Архив не выбран"
     @State private var archiveURL: URL?
