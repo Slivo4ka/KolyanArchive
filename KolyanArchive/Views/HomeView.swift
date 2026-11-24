@@ -697,19 +697,43 @@ struct ImageGalleryView: View {
                 Color.black
                     .ignoresSafeArea()
 
-                TabView(selection: $selectedIndex) {
-                    ForEach(items.indices, id: \.self) { index in
-                        ArchiveImagePage(
-                            archiveURL: archiveURL,
-                            item: items[index],
-                            isZoomed: $isZoomed
-                        )
-                        .tag(index)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .scrollDisabled(isZoomed)
-                .ignoresSafeArea()
+                ArchiveImagePage(
+                    archiveURL: archiveURL,
+                    item: items[selectedIndex],
+                    isZoomed: $isZoomed
+                )
+                .id(selectedIndex)
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height
+                )
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 20)
+                        .onEnded { value in
+                            // Увеличено фото — перелистывание запрещено
+                            guard !isZoomed else { return }
+
+                            let horizontal = value.translation.width
+                            let vertical = value.translation.height
+
+                            // Реагируем только на горизонтальный свайп
+                            guard abs(horizontal) > 50,
+                                abs(horizontal) > abs(vertical) else {
+                                return
+                            }
+
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if horizontal < 0,
+                                selectedIndex < items.count - 1 {
+                                    selectedIndex += 1
+                                } else if horizontal > 0,
+                                        selectedIndex > 0 {
+                                    selectedIndex -= 1
+                                }
+                            }
+                        }
+                )
                 .onChange(of: selectedIndex) { _, _ in
                     isZoomed = false
                 }
@@ -924,7 +948,6 @@ private struct ArchiveImagePage: View {
             lastScale = 1
             offset = .zero
             lastOffset = .zero
-            isZoomed = false
             loadImage()
         }
     }
