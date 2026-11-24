@@ -2,26 +2,37 @@
 import SwiftUI
 
 struct SplashScreenView: View {
-    @State private var scale: CGFloat = 0.88
-    @State private var isVisible = true
+    @State private var scale: CGFloat = 1.0
 
     var body: some View {
-        ZStack {
-            if isVisible {
-                Image("SplashScreen")
-                    .resizable()
-                    .scaledToFill()
-                    .ignoresSafeArea()
-                    .scaleEffect(scale)
-                    .transition(.opacity)
-                    .onAppear {
-                        withAnimation(.easeOut(duration: 1.25)) {
-                            scale = 1.04
+        GeometryReader { geometry in
+            Image("SplashScreen")
+                .resizable()
+                .scaledToFill()
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height
+                )
+                .clipped()
+                .scaleEffect(scale, anchor: .center)
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height
+                )
+                .background(Color.black)
+                .ignoresSafeArea()
+                .onAppear {
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(500))
+
+                        withAnimation(.easeInOut(duration: 1.1)) {
+                            scale = 1.22
                         }
                     }
-            }
+                }
         }
         .background(Color.black)
+        .ignoresSafeArea()
     }
 }
 
@@ -35,10 +46,11 @@ struct SplashRootView: View {
             if showSplash {
                 SplashScreenView()
                     .zIndex(1)
+                    .transition(.opacity)
                     .task {
-                        try? await Task.sleep(for: .seconds(1.5))
+                        try? await Task.sleep(for: .milliseconds(1900))
 
-                        withAnimation(.easeOut(duration: 0.35)) {
+                        withAnimation(.easeOut(duration: 0.45)) {
                             showSplash = false
                         }
                     }
