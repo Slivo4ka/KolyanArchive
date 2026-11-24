@@ -86,7 +86,7 @@ var body: some View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(item: $activeGallery) { gallery in
+        .fullScreenCover(item: $activeGallery) { gallery in
             ImageGalleryView(
                 archiveURL: gallery.archiveURL,
                 items: gallery.items,
@@ -667,6 +667,7 @@ struct ArchiveImage: Identifiable {
 
     var id: String { path }
 }
+
 struct ImageGalleryView: View {
 
     let archiveURL: URL
@@ -674,6 +675,8 @@ struct ImageGalleryView: View {
     let isEnglish: Bool
 
     @State private var selectedIndex: Int
+    @State private var isZoomed = false
+
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -689,35 +692,70 @@ struct ImageGalleryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            TabView(selection: $selectedIndex) {
-                ForEach(items.indices, id: \.self) { index in
-                    ArchiveImagePage(
-                        archiveURL: archiveURL,
-                        item: items[index]
-                    )
-                    .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .automatic))
-            .background(Color.black)
-            .navigationTitle(
-                items.indices.contains(selectedIndex)
-                    ? items[selectedIndex].name
-                    : (isEnglish ? "Photo" : "Фото")
-            )
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isEnglish ? "Done" : "Готово") {
-                        dismiss()
+        GeometryReader { geometry in
+            ZStack {
+                Color.black
+                    .ignoresSafeArea()
+
+                TabView(selection: $selectedIndex) {
+                    ForEach(items.indices, id: \.self) { index in
+                        ArchiveImagePage(
+                            archiveURL: archiveURL,
+                            item: items[index],
+                            isZoomed: $isZoomed
+                        )
+                        .tag(index)
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .scrollDisabled(isZoomed)
+                .ignoresSafeArea()
+                .onChange(of: selectedIndex) { _, _ in
+                    isZoomed = false
+                }
+
+                VStack {
+                    HStack {
+                        Spacer()
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 42, height: 42)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+
+                    Text(
+                        "\(selectedIndex + 1) / \(items.count)"
+                    )
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, geometry.safeAreaInsets.top + 8)
+                .padding(.bottom, geometry.safeAreaInsets.bottom + 12)
             }
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height
+            )
         }
+        .background(Color.black.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .statusBarHidden(true)
     }
 }
+
 
 
 
@@ -725,6 +763,7 @@ private struct ArchiveImagePage: View {
 
     let archiveURL: URL
     let item: ArchiveImage
+    @Binding var isZoomed: Bool
 
     @State private var image: UIImage?
 
@@ -788,6 +827,7 @@ private struct ArchiveImagePage: View {
                                     )
 
                                     scale = newScale
+                                    isZoomed = newScale > 1
 
                                     if newScale <= 1 {
                                         offset = .zero
@@ -837,6 +877,7 @@ private struct ArchiveImagePage: View {
                                     lastScale = 1
                                     offset = .zero
                                     lastOffset = .zero
+                                    isZoomed = false
                                 } else {
                                     let newScale: CGFloat = 2.5
 
@@ -852,6 +893,7 @@ private struct ArchiveImagePage: View {
 
                                     scale = newScale
                                     lastScale = newScale
+                                    isZoomed = true
 
                                     offset = limitedOffset(
                                         newOffset,
@@ -882,6 +924,7 @@ private struct ArchiveImagePage: View {
             lastScale = 1
             offset = .zero
             lastOffset = .zero
+            isZoomed = false
             loadImage()
         }
     }
