@@ -10,6 +10,8 @@ struct HomeView: View {
 
     @State private var isImporterPresented = false
     @State private var isChoosingDestination = false
+    @State private var showingArchiveInfo = false
+    @State private var archiveInfo: ArchiveInfo?
 
     @AppStorage("isEnglish") private var isEnglish = false
 
@@ -95,6 +97,17 @@ var body: some View {
                 initialIndex: gallery.initialIndex,
                 isEnglish: isEnglish
             )
+        }
+        .sheet(isPresented: $showingArchiveInfo) {
+            if let archiveInfo {
+                ArchiveInfoView(
+                    info: archiveInfo,
+                    isEnglish: isEnglish
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+            }
         }
     }
     .tint(.white)
@@ -228,6 +241,16 @@ private var extractArchiveButton: some View {
                 Spacer()
 
                 if archiveURL != nil {
+                    Button {
+                        showArchiveInfo()
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.title2)
+                            .foregroundStyle(.cyan)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("Информация об архиве", "Archive information"))
+
                     Button {
                         closeArchive()
                     } label: {
@@ -615,7 +638,63 @@ private func openImage(_ entry: ArchiveEntry) {
             showError(error)
         }
     }
+// MARK: - Archive information
 
+    private func showArchiveInfo() {
+        guard let archiveURL else { return }
+
+        do {
+            let archive = try Archive(
+                url: archiveURL,
+                accessMode: .read
+            )
+
+            let allEntries = Array(archive)
+
+            let files = allEntries.filter {
+                $0.type == .file
+            }
+
+            var folders = Set<String>()
+
+            for entry in allEntries {
+                let components = entry.path.split(separator: "/")
+                var currentPath = ""
+
+                for (index, component) in components.enumerated() {
+                    currentPath += (currentPath.isEmpty ? "" : "/")
+                        + String(component)
+
+                    if index < components.count - 1 ||
+                        entry.type == .directory {
+                        folders.insert(currentPath)
+                    }
+                }
+            }
+
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: archiveURL.path
+            )
+
+            let archiveSize = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+
+            let totalUncompressedSize = files.reduce(UInt64(0)) {
+                $0 + UInt64($1.uncompressedSize)
+            }
+
+            archiveInfo = ArchiveInfo(
+                archiveSize: archiveSize,
+                fileCount: files.count,
+                folderCount: folders.count,
+                uncompressedSize: totalUncompressedSize
+            )
+
+            showingArchiveInfo = true
+
+        } catch {
+            showError(error)
+        }
+    }
     // MARK: - Error handling
 
     private func showError(_ error: Error) {
@@ -671,6 +750,8 @@ private func closeArchive() {
     currentDirectoryPath = ""
     entries = []
     activeGallery = nil
+    archiveInfo = nil
+    showingArchiveInfo = false
     message = tr(
         "Выбери ZIP-архив через кнопку выше.",
         "Choose a ZIP archive using the button above."
@@ -1332,6 +1413,116 @@ private struct ArchiveTextView: View {
         } catch {
             loadFailed = true
             print("TXT loading error: \(error)")
+        }
+    }
+}
+
+private struct ArchiveInfo {
+    let archiveSize: UInt64
+    let fileCount: Int
+    let folderCount: Int
+    let uncompressedSize: UInt64
+}
+
+private struct ArchiveInfoView: View {
+
+    let info: ArchiveInfo
+    let isEnglish: Bool
+
+    @Environment(\.dismiss) private var dismiss
+
+    private func tr(_ ru: String, _ en: String) -> String {
+        isEnglish ? en : ru
+    }
+
+    private func formatSize(_ bytes: UInt64) -> String {
+        ByteCountFormatter.string(
+            fromByteCount: Int64(bytes),
+            countStyle: .file
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.035, green: 0.043, blue: 0.075)
+                .ignoresSafeArea()
+
+            VStack(spacing: 22) {
+
+                HStack {
+                    Label(
+                        tr("Информация об архиве", "Archive information"),
+                        systemImage: "info.circle.fill"
+                    )
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                    Spacer()
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                VStack(spacing: 18) {
+
+                    infoRow(
+                        tr("Размер архива", "Archive size"),
+                        value: formatSize(info.archiveSize),
+                        icon: "doc.zipper"
+                    )
+
+                    infoRow(
+                        tr("Всего файлов", "Total files"),
+                        value: "\(info.fileCount)",
+                        icon: "doc"
+                    )
+
+                    infoRow(
+                        tr("Количество папок", "Total folders"),
+                        value: "\(info.folderCount)",
+                        icon: "folder"
+                    )
+
+                    infoRow(
+                        tr("Размер содержимого", "Uncompressed size"),
+                        value: formatSize(info.uncompressedSize),
+                        icon: "externaldrive"
+                    )
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+        }
+    }
+
+    private func infoRow(
+        _ title: String,
+        value: String,
+        icon: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 19))
+                .foregroundStyle(.cyan)
+                .frame(width: 28)
+
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.7))
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .monospacedDigit()
         }
     }
 }
