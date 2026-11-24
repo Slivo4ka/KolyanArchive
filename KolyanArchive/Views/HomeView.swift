@@ -605,12 +605,10 @@ private struct ArchiveImagePage: View {
             .clipped()
         }
         .task(id: item.id) {
-            loadImage()
-        }
-        .onChange(of: item.id) { _, _ in
+            image = nil
             scale = 1
             lastScale = 1
-            image = nil
+            loadImage()
         }
     }
 
@@ -631,17 +629,22 @@ private struct ArchiveImagePage: View {
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(item.fileExtension)
 
-            defer {
-                try? FileManager.default.removeItem(at: previewURL)
-            }
-
             try archive.extract(
                 archiveEntry,
                 to: previewURL
             )
 
+            defer {
+                try? FileManager.default.removeItem(at: previewURL)
+            }
+
             let imageData = try Data(contentsOf: previewURL)
-            image = UIImage(data: imageData)
+
+            guard let loadedImage = UIImage(data: imageData) else {
+                return
+            }
+
+            image = loadedImage
 
         } catch {
             print("Ошибка загрузки изображения: \(error)")
