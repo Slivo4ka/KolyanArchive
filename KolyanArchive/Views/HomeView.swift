@@ -16,6 +16,8 @@ struct HomeView: View {
 
     @State private var currentDirectoryPath = ""
     @State private var entries: [ArchiveEntry] = []
+    @State private var searchText = ""
+    @State private var searchResults: [ArchiveEntry] = []
     @State private var activeGallery: GalleryPresentation?
 
     @State private var message = "Выбери ZIP-архив через кнопку выше."
@@ -26,6 +28,15 @@ struct HomeView: View {
     private let archiveService = ZIPArchiveService()
     private func tr(_ ru: String, _ en: String) -> String {
         isEnglish ? en : ru
+    }
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty
+    }
+
+    private var displayedEntries: [ArchiveEntry] {
+        isSearching ? searchResults : entries
     }
 
     
@@ -207,21 +218,60 @@ private var extractArchiveButton: some View {
                     .buttonStyle(.plain)
                 }
             }
+            if archiveURL != nil {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.cyan)
 
-            if entries.isEmpty {
+                    TextField(
+                        tr("Поиск по архиву...", "Search archive..."),
+                        text: $searchText
+                    )
+                    .foregroundStyle(.white)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onChange(of: searchText) { _, newValue in
+                        performSearch(newValue)
+                    }
+
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                            searchResults = []
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(13)
+                .background(
+                    Color.white.opacity(0.07),
+                    in: RoundedRectangle(cornerRadius: 13)
+                )
+            }            
+            if displayedEntries.isEmpty {
                 ContentUnavailableView(
-                    tr("Нет содержимого", "No contents"),
-                    systemImage: "doc.zipper",
-                    description: Text(message)
+                    tr(
+                        isSearching ? "Ничего не найдено" : "Нет содержимого",
+                        isSearching ? "No results found" : "No contents"
+                    ),
+                    systemImage: isSearching ? "magnifyingglass" : "doc.zipper",
+                    description: Text(
+                        isSearching
+                            ? tr("Попробуй другое название или путь.", "Try another name or path.")
+                            : message
+                    )
                 )
                 .frame(maxWidth: .infinity, minHeight: 190)
 
             } else {
 
-                ForEach(entries) { entry in
+                ForEach(displayedEntries) { entry in
                     archiveEntryRow(entry)
 
-                    if entry.id != entries.last?.id {
+                    if entry.id != displayedEntries.last?.id {
                         Divider()
                             .overlay(Color.white.opacity(0.06))
                     }
@@ -236,6 +286,32 @@ private var extractArchiveButton: some View {
         )
     }
 
+    // MARK: - Search
+
+    private func performSearch(_ query: String) {
+        guard let archiveURL else {
+            searchResults = []
+            return
+        }
+
+        let trimmedQuery = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !trimmedQuery.isEmpty else {
+            searchResults = []
+            return
+        }
+
+        do {
+            searchResults = try archiveService.searchContents(
+                of: archiveURL,
+                matching: trimmedQuery
+            )
+        } catch {
+            showError(error)
+        }
+    }
     // MARK: - Entry row
 
     private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
@@ -290,7 +366,7 @@ private func openImage(_ entry: ArchiveEntry) {
 
     let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp"]
 
-    let images = entries
+    let images = displayedEntries
         .filter {
             !$0.isDirectory &&
             supportedFormats.contains($0.fileExtension)
@@ -319,6 +395,8 @@ private func openImage(_ entry: ArchiveEntry) {
 
     private func openDirectory(_ entry: ArchiveEntry) {
         guard let archiveURL else { return }
+        searchText = ""
+        searchResults = []
 
         do {
             currentDirectoryPath = entry.path
@@ -455,6 +533,9 @@ private func openImage(_ entry: ArchiveEntry) {
             )
 
 
+            searchText = ""
+            searchResults = []
+
             activeGallery = nil
             archiveURL = copiedURL
             archiveName = sourceURL.lastPathComponent
@@ -517,6 +598,9 @@ private func extractToSelectedFolder(
     }
 }
 private func closeArchive() {
+    searchText = ""
+    searchResults = []
+
     archiveURL = nil
     archiveName = tr("Архив не выбран", "No archive selected")
     currentDirectoryPath = ""

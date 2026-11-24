@@ -126,6 +126,100 @@ struct ZIPArchiveService {
         }
     }
 
+    // MARK: - Search archive contents
+
+    func searchContents(
+        of archiveURL: URL,
+        matching query: String
+    ) throws -> [ArchiveEntry] {
+
+        guard archiveURL.pathExtension.lowercased() == "zip" else {
+            throw ArchiveServiceError.onlyZIPSupported
+        }
+
+        guard FileManager.default.fileExists(atPath: archiveURL.path) else {
+            throw ArchiveServiceError.archiveNotFound
+        }
+
+        let archive = try Archive(
+            url: archiveURL,
+            accessMode: .read
+        )
+
+        var items: [String: ArchiveEntry] = [:]
+
+        for entry in archive {
+            let path = entry.path.trimmingCharacters(
+                in: CharacterSet(charactersIn: "/")
+            )
+
+            guard !path.isEmpty else { continue }
+
+            let components = path.split(
+                separator: "/",
+                omittingEmptySubsequences: true
+            )
+
+            // Добавляем все вложенные папки
+            if components.count > 1 {
+                for index in 1..<components.count {
+                    let directoryPath = components
+                        .prefix(index)
+                        .joined(separator: "/")
+
+                    if items[directoryPath] == nil {
+                        items[directoryPath] = ArchiveEntry(
+                            id: directoryPath,
+                            path: directoryPath,
+                            sizeDescription: "Папка",
+                            isDirectory: true
+                        )
+                    }
+                }
+            }
+
+            // Добавляем сам файл или папку
+            if entry.type == .directory {
+                items[path] = ArchiveEntry(
+                    id: path,
+                    path: path,
+                    sizeDescription: "Папка",
+                    isDirectory: true
+                )
+            } else {
+                items[path] = ArchiveEntry(
+                    id: path,
+                    path: path,
+                    sizeDescription: ByteCountFormatter.string(
+                        fromByteCount: Int64(entry.uncompressedSize),
+                        countStyle: .file
+                    ),
+                    isDirectory: false
+                )
+            }
+        }
+
+        let searchQuery = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !searchQuery.isEmpty else { return [] }
+
+        return items.values
+            .filter {
+                $0.name.localizedCaseInsensitiveContains(searchQuery) ||
+                $0.path.localizedCaseInsensitiveContains(searchQuery)
+            }
+            .sorted {
+                if $0.isDirectory != $1.isDirectory {
+                    return $0.isDirectory
+                }
+
+                return $0.path.localizedStandardCompare($1.path)
+                    == .orderedAscending
+            }
+    }
+
     // MARK: - Extract archive
 
     func extract(
