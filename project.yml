@@ -1,0 +1,30 @@
+name: KolyanArchive
+options:
+  bundleIdPrefix: app.aquarius2773
+  deploymentTarget:
+    iOS: "16.0"
+
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    from: 0.9.21
+
+targets:
+  KolyanArchive:
+    type: application
+    platform: iOS
+    sources:
+      - path: KolyanArchive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.aquarius2773.mangosteen9164
+        PRODUCT_NAME: KolyanArchive
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Kolyan Archive"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    dependencies:
+      - package: ZIPFoundation
+        product: ZIPFoundation
