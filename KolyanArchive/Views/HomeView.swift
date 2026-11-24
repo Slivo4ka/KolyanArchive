@@ -32,7 +32,7 @@ var body: some View {
             Color(red: 0.035, green: 0.043, blue: 0.075)
                 .ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     header
                     openArchiveButton
@@ -164,24 +164,23 @@ private var extractArchiveButton: some View {
     private var archiveContents: some View {
         VStack(alignment: .leading, spacing: 14) {
 
-            Text(archiveName)
-                .font(.headline)
-                .lineLimit(1)
+            HStack {
+                Text(archiveName)
+                    .font(.headline)
+                    .lineLimit(1)
 
-            if archiveURL != nil && !currentDirectoryPath.isEmpty {
-                Button {
-                    goBack()
-                } label: {
-                    Label("Назад", systemImage: "arrow.left")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.cyan)
+                Spacer()
+
+                if archiveURL != nil {
+                    Button {
+                        closeArchive()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.red.opacity(0.85))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-
-                Text(currentDirectoryPath)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.4))
-                    .lineLimit(2)
             }
 
             if entries.isEmpty {
@@ -634,5 +633,15 @@ private struct ArchiveImagePage: View {
         } catch {
             print("Ошибка загрузки изображения: \(error)")
         }
+    }
+    private func closeArchive() {
+        archiveURL = nil
+        archiveName = "Архив не выбран"
+        currentDirectoryPath = ""
+        entries = []
+        previewImages = []
+        previewStartIndex = 0
+        isImagePreviewPresented = false
+        message = "Выбери ZIP-архив через кнопку выше."
     }
 }
