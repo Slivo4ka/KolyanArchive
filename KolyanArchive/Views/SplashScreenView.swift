@@ -25,7 +25,7 @@ struct SplashScreenView: View {
                     Task {
                         try? await Task.sleep(for: .milliseconds(500))
 
-                        withAnimation(.easeInOut(duration: 1.1)) {
+                        withAnimation(.easeInOut(duration: 0.8)) {
                             scale = 1.22
                         }
                     }
@@ -50,7 +50,7 @@ struct SplashRootView: View {
                     .task {
                         try? await Task.sleep(for: .milliseconds(1900))
 
-                        withAnimation(.easeOut(duration: 0.45)) {
+                        withAnimation(.easeOut(duration: 0.3)) {
                             showSplash = false
                         }
                     }
