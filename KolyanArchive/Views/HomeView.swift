@@ -14,8 +14,8 @@ struct HomeView: View {
 
     @State private var currentDirectoryPath = ""
     @State private var entries: [ArchiveEntry] = []
-    @State private var previewImage: UIImage?
-    @State private var previewImageName = ""
+    @State private var previewImages: [ArchiveImage] = []
+    @State private var previewStartIndex = 0
     @State private var isImagePreviewPresented = false
 
     @State private var message = "Выбери ZIP-архив через кнопку выше."
@@ -25,82 +25,66 @@ struct HomeView: View {
 
     private let archiveService = ZIPArchiveService()
 
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(red: 0.035, green: 0.043, blue: 0.075)
-                    .ignoresSafeArea()
+    
+var body: some View {
+    NavigationStack {
+        ZStack {
+            Color(red: 0.035, green: 0.043, blue: 0.075)
+                .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    header
+                    openArchiveButton
 
-                        header
-
-                        openArchiveButton
-
-                        if archiveURL != nil {
-                            extractArchiveButton
-                        }
-
-                        archiveContents
-
-                        featureCards
-
-                        Text("Kolyan Archive 2026")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.35))
-                            .frame(maxWidth: .infinity)
+                    if archiveURL != nil {
+                        extractArchiveButton
                     }
-                    .padding(20)
-                }
-            }
-            .toolbar(.hidden, for: .navigationBar)
-                        .fileImporter(
-                isPresented: $isImporterPresented,
-                allowedContentTypes: isChoosingDestination ? [.folder] : [.zip],
-                allowsMultipleSelection: false
-            ) { result in
-                if isChoosingDestination {
-                    extractToSelectedFolder(result)
-                } else {
-                    openSelectedArchive(result)
-                }
-            }
-            .alert(
-                "Не удалось открыть архив",
-                isPresented: $showingError
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage)
-            }
-            .sheet(isPresented: $isImagePreviewPresented) {
-                NavigationStack {
-                    ZStack {
-                        Color.black.ignoresSafeArea()
 
-                        if let previewImage {
-                            Image(uiImage: previewImage)
-                                .resizable()
-                                .scaledToFit()
-                                .padding()
-                        }
-                    }
-                    .navigationTitle(previewImageName)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Готово") {
-                                isImagePreviewPresented = false
-                            }
-                        }
-                    }
+                    archiveContents
+                    featureCards
+
+                    Text("Kolyan Technologies")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.35))
+                        .frame(maxWidth: .infinity)
                 }
-                .preferredColorScheme(.dark)
+                .padding(20)
             }
         }
-        .tint(.white)
+        .toolbar(.hidden, for: .navigationBar)
+        .fileImporter(
+            isPresented: $isImporterPresented,
+            allowedContentTypes: isChoosingDestination ? [.folder] : [.zip],
+            allowsMultipleSelection: false
+        ) { result in
+            if isChoosingDestination {
+                extractToSelectedFolder(result)
+            } else {
+                openSelectedArchive(result)
+            }
+        }
+        .alert(
+            "Не удалось открыть архив",
+            isPresented: $showingError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
+        }
+        .sheet(isPresented: $isImagePreviewPresented) {
+            if let archiveURL {
+                ImageGalleryView(
+                    archiveURL: archiveURL,
+                    items: previewImages,
+                    initialIndex: previewStartIndex
+                )
+            }
+        }
     }
+    .tint(.white)
+}
+
 
     // MARK: - Header
 
@@ -278,52 +262,30 @@ private var extractArchiveButton: some View {
     // MARK: - Image preview
 
 private func openImage(_ entry: ArchiveEntry) {
-    guard let archiveURL else { return }
+    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp"]
 
-    do {
-        let archive = try Archive(
-            url: archiveURL,
-            accessMode: .read
-        )
-
-        guard let archiveEntry = archive.first(where: {
-            $0.path == entry.path
-        }) else {
-            throw ArchiveServiceError.archiveNotFound
+    let images = entries
+        .filter {
+            !$0.isDirectory &&
+            supportedFormats.contains($0.fileExtension)
+        }
+        .map {
+            ArchiveImage(
+                path: $0.path,
+                name: $0.name,
+                fileExtension: $0.fileExtension
+            )
         }
 
-        guard archiveEntry.type == .file else {
-            throw ArchiveServiceError.archiveNotFound
-        }
-
-        let previewDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("KolyanArchivePreviews")
-
-        try FileManager.default.createDirectory(
-            at: previewDirectory,
-            withIntermediateDirectories: true
-        )
-
-        let previewURL = previewDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(entry.fileExtension)
-
-        try archive.extract(
-            archiveEntry,
-            to: previewURL
-        )
-
-        guard let image = UIImage(contentsOfFile: previewURL.path) else {
-            throw ArchiveServiceError.archiveNotFound
-        }
-
-        previewImage = image
-        previewImageName = entry.name
-        isImagePreviewPresented = true
-
-    } catch {
-        showError(error)
+    guard let selectedIndex = images.firstIndex(where: {
+        $0.path == entry.path
+    }) else {
+        return
     }
+
+    previewImages = images
+    previewStartIndex = selectedIndex
+    isImagePreviewPresented = true
 }
     // MARK: - Directory navigation
 
@@ -515,4 +477,162 @@ private func extractToSelectedFolder(
         showError(error)
     }
 }
+}
+struct ArchiveImage: Identifiable {
+    let path: String
+    let name: String
+    let fileExtension: String
+
+    var id: String { path }
+}
+struct ImageGalleryView: View {
+
+    let archiveURL: URL
+    let items: [ArchiveImage]
+
+    @State private var selectedIndex: Int
+    @Environment(\.dismiss) private var dismiss
+
+    init(
+        archiveURL: URL,
+        items: [ArchiveImage],
+        initialIndex: Int
+    ) {
+        self.archiveURL = archiveURL
+        self.items = items
+        _selectedIndex = State(initialValue: initialIndex)
+    }
+
+    var body: some View {
+        NavigationStack {
+            TabView(selection: $selectedIndex) {
+                ForEach(items.indices, id: \.self) { index in
+                    ArchiveImagePage(
+                        archiveURL: archiveURL,
+                        item: items[index]
+                    )
+                    .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            .background(Color.black)
+            .navigationTitle(
+                items.indices.contains(selectedIndex)
+                    ? items[selectedIndex].name
+                    : "Фото"
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Готово") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+private struct ArchiveImagePage: View {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+
+
+    @State private var image: UIImage?
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Color.black
+
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(
+                            width: geometry.size.width,
+                            height: geometry.size.height
+                        )
+                        .scaleEffect(scale)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    scale = min(
+                                        max(lastScale * value, 1),
+                                        5
+                                    )
+                                }
+                                .onEnded { _ in
+                                    lastScale = scale
+                                }
+                        )
+                        .onTapGesture(count: 2) {
+                            withAnimation(.spring()) {
+                                if scale > 1 {
+                                    scale = 1
+                                    lastScale = 1
+                                } else {
+                                    scale = 2.5
+                                    lastScale = 2.5
+                                }
+                            }
+                        }
+                } else {
+                    ProgressView()
+                        .tint(.white)
+                }
+            }
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height
+            )
+            .clipped()
+        }
+        .task(id: item.id) {
+            loadImage()
+        }
+        .onChange(of: item.id) { _, _ in
+            scale = 1
+            lastScale = 1
+            image = nil
+        }
+    }
+
+    private func loadImage() {
+        do {
+            let archive = try Archive(
+                url: archiveURL,
+                accessMode: .read
+            )
+
+            guard let archiveEntry = archive.first(where: {
+                $0.path == item.path
+            }), archiveEntry.type == .file else {
+                return
+            }
+
+            let previewURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(item.fileExtension)
+
+            defer {
+                try? FileManager.default.removeItem(at: previewURL)
+            }
+
+            try archive.extract(
+                archiveEntry,
+                to: previewURL
+            )
+
+            let imageData = try Data(contentsOf: previewURL)
+            image = UIImage(data: imageData)
+
+        } catch {
+            print("Ошибка загрузки изображения: \(error)")
+        }
+    }
 }
