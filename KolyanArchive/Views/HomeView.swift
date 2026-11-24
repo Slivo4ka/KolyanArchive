@@ -202,7 +202,25 @@ private var extractArchiveButton: some View {
     private var archiveContents: some View {
         VStack(alignment: .leading, spacing: 14) {
 
-            HStack {
+            HStack(spacing: 12) {
+
+                if !currentDirectoryPath.isEmpty {
+                    Button {
+                        goBack()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.cyan)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Color.white.opacity(0.08),
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("Назад", "Back"))
+                }
+
                 Text(archiveName)
                     .font(.headline)
                     .lineLimit(1)
@@ -362,7 +380,7 @@ private var extractArchiveButton: some View {
         Button {
             if entry.isDirectory {
                 openDirectory(entry)
-            } else if ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf"].contains(entry.fileExtension) {
+            } else if ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension) {
                 openImage(entry)
             }
         } label: {
@@ -400,7 +418,7 @@ private var extractArchiveButton: some View {
         .buttonStyle(.plain)
         .disabled(
             !entry.isDirectory &&
-            !["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf"].contains(entry.fileExtension)
+            !["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension)
         )
     }
     // MARK: - Image preview
@@ -408,7 +426,7 @@ private var extractArchiveButton: some View {
 private func openImage(_ entry: ArchiveEntry) {
     guard let archiveURL else { return }
 
-    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf"]
+    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"]
 
     let images = displayedEntries
         .filter {
@@ -460,6 +478,9 @@ private func openImage(_ entry: ArchiveEntry) {
     }
 
     private func goBack() {
+        searchText = ""
+        searchResults = []
+
         let components = currentDirectoryPath.split(separator: "/")
 
         currentDirectoryPath = components
@@ -709,6 +730,12 @@ struct ImageGalleryView: View {
                         ArchivePDFView(
                             archiveURL: archiveURL,
                             item: items[selectedIndex]
+                        )
+                    } else if items[selectedIndex].fileExtension == "txt" {
+                        ArchiveTextView(
+                            archiveURL: archiveURL,
+                            item: items[selectedIndex],
+                            isEnglish: isEnglish
                         )
                     } else {
                         ArchiveImagePage(
@@ -1223,6 +1250,89 @@ private struct ArchivePDFView: UIViewRepresentable {
 
     final class Coordinator {
         var loadedPath: String?
+    }
+}
+
+private struct ArchiveTextView: View {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+    let isEnglish: Bool
+
+    @State private var text = ""
+    @State private var loadFailed = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if loadFailed {
+                Text(
+                    isEnglish
+                    ? "Unable to read this file."
+                    : "Не удалось прочитать этот файл."
+                )
+                .foregroundStyle(.white.opacity(0.7))
+            } else {
+                ScrollView {
+                    Text(text)
+                        .font(.system(size: 15, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 75)
+                        .padding(.bottom, 85)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .task(id: item.id) {
+            loadText()
+        }
+    }
+
+    private func loadText() {
+        do {
+            let archive = try Archive(
+                url: archiveURL,
+                accessMode: .read
+            )
+
+            guard let entry = archive.first(where: {
+                $0.path == item.path
+            }), entry.type == .file else {
+                loadFailed = true
+                return
+            }
+
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("txt")
+
+            try archive.extract(entry, to: temporaryURL)
+
+            defer {
+                try? FileManager.default.removeItem(at: temporaryURL)
+            }
+
+            let data = try Data(contentsOf: temporaryURL)
+
+            if let decodedText =
+                String(data: data, encoding: .utf8) ??
+                String(data: data, encoding: .utf16) ??
+                String(data: data, encoding: .windowsCP1251) {
+
+                text = decodedText
+                    .replacingOccurrences(of: "\u{FEFF}", with: "")
+            } else {
+                loadFailed = true
+            }
+
+        } catch {
+            loadFailed = true
+            print("TXT loading error: \(error)")
+        }
     }
 }
 
