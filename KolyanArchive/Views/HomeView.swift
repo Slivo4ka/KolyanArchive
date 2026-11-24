@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct HomeView: View {
 
     @State private var isImporterPresented = false
+    @State private var isChoosingDestination = false
 
     @State private var archiveName = "Архив не выбран"
     @State private var archiveURL: URL?
@@ -32,11 +33,15 @@ struct HomeView: View {
 
                         openArchiveButton
 
+                        if archiveURL != nil {
+                            extractArchiveButton
+                        }
+
                         archiveContents
 
                         featureCards
 
-                        Text("Личная версия Kolyan Archive")
+                        Text("Kolyan Archive 2026")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.35))
                             .frame(maxWidth: .infinity)
@@ -45,12 +50,16 @@ struct HomeView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .fileImporter(
+                        .fileImporter(
                 isPresented: $isImporterPresented,
-                allowedContentTypes: [.zip],
+                allowedContentTypes: isChoosingDestination ? [.folder] : [.zip],
                 allowsMultipleSelection: false
             ) { result in
-                openSelectedArchive(result)
+                if isChoosingDestination {
+                    extractToSelectedFolder(result)
+                } else {
+                    openSelectedArchive(result)
+                }
             }
             .alert(
                 "Не удалось открыть архив",
@@ -116,6 +125,25 @@ struct HomeView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Extract archive button
+
+private var extractArchiveButton: some View {
+    Button {
+        isChoosingDestination = true
+        isImporterPresented = true
+    } label: {
+        Label("Распаковать архив", systemImage: "archivebox")
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 17)
+            .background(
+                Color.green.opacity(0.8),
+                in: RoundedRectangle(cornerRadius: 16)
+            )
+    }
+    .buttonStyle(.plain)
     }
 
     // MARK: - Archive contents
@@ -367,4 +395,41 @@ struct HomeView: View {
         errorMessage = error.localizedDescription
         showingError = true
     }
+// MARK: - Extract archive
+
+private func extractToSelectedFolder(
+    _ result: Result<[URL], Error>
+) {
+    defer {
+        isChoosingDestination = false
+    }
+
+    do {
+        guard let destinationURL = try result.get().first else {
+            return
+        }
+
+        guard let archiveURL else {
+            return
+        }
+
+        let hasAccess = destinationURL.startAccessingSecurityScopedResource()
+
+        defer {
+            if hasAccess {
+                destinationURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        try archiveService.extract(
+            archiveURL: archiveURL,
+            to: destinationURL
+        )
+
+        message = "Архив успешно распакован!"
+
+    } catch {
+        showError(error)
+    }
+}
 }
