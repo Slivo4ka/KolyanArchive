@@ -24,6 +24,9 @@ struct HomeView: View {
     @State private var showingError = false
 
     private let archiveService = ZIPArchiveService()
+    private func tr(_ ru: String, _ en: String) -> String {
+        isEnglish ? en : ru
+    }
 
     
 var body: some View {
@@ -44,7 +47,7 @@ var body: some View {
                     archiveContents
                     featureCards
 
-                    Text("Kolyan Technologies")
+                    Text("Kolyan Tech. LTD")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.35))
                         .frame(maxWidth: .infinity)
@@ -65,7 +68,7 @@ var body: some View {
             }
         }
         .alert(
-            "Не удалось открыть архив",
+            tr("Не удалось открыть архив", "Unable to open archive"),
             isPresented: $showingError
         ) {
             Button("OK", role: .cancel) {}
@@ -76,7 +79,8 @@ var body: some View {
             ImageGalleryView(
                 archiveURL: gallery.archiveURL,
                 items: gallery.items,
-                initialIndex: gallery.initialIndex
+                initialIndex: gallery.initialIndex,
+                isEnglish: isEnglish
             )
         }
     }
@@ -104,6 +108,14 @@ var body: some View {
 
             Button {
                 isEnglish.toggle()
+
+                if archiveURL == nil {
+                    archiveName = tr("Архив не выбран", "No archive selected")
+                    message = tr(
+                        "Выбери ZIP-архив через кнопку выше.",
+                        "Choose a ZIP archive using the button above."
+                    )
+                }
             } label: {
                 HStack(spacing: 7) {
                     Text(isEnglish ? "🇬🇧" : "🇷🇺")
@@ -132,7 +144,7 @@ var body: some View {
             isImporterPresented = true
         } label: {
             Label(
-                "Открыть архив",
+                tr("Открыть архив", "Open archive"),
                 systemImage: "folder.badge.plus"
             )
             .font(.headline)
@@ -157,7 +169,10 @@ private var extractArchiveButton: some View {
         isChoosingDestination = true
         isImporterPresented = true
     } label: {
-        Label("Распаковать архив", systemImage: "archivebox")
+        Label(
+            tr("Распаковать архив", "Extract archive"),
+            systemImage: "archivebox"
+        )
             .font(.headline)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 17)
@@ -195,7 +210,7 @@ private var extractArchiveButton: some View {
 
             if entries.isEmpty {
                 ContentUnavailableView(
-                    "Нет содержимого",
+                    tr("Нет содержимого", "No contents"),
                     systemImage: "doc.zipper",
                     description: Text(message)
                 )
@@ -314,7 +329,7 @@ private func openImage(_ entry: ArchiveEntry) {
             )
 
             message = entries.isEmpty
-                ? "Эта папка пуста."
+                ? tr("Эта папка пуста.", "This folder is empty.")
                 : ""
 
         } catch {
@@ -337,7 +352,7 @@ private func openImage(_ entry: ArchiveEntry) {
                 in: currentDirectoryPath
             )
 
-            message = entries.isEmpty ? "Эта папка пуста." : ""
+            message = entries.isEmpty ? tr("Эта папка пуста.", "This folder is empty.") : ""
 
         } catch {
             showError(error)
@@ -350,13 +365,19 @@ private func openImage(_ entry: ArchiveEntry) {
         HStack(spacing: 12) {
             featureCard(
                 "ZIP",
-                detail: "Создание и распаковка",
+                detail: tr(
+                    "Создание и распаковка",
+                    "Create and extract archives"
+                ),
                 symbol: "doc.zipper"
             )
 
             featureCard(
                 "RAR",
-                detail: "Распаковка — следующий этап",
+                detail: tr(
+                    "Распаковка — следующий этап",
+                    "Extraction — coming next"
+                ),
                 symbol: "archivebox"
             )
         }
@@ -441,7 +462,7 @@ private func openImage(_ entry: ArchiveEntry) {
             entries = newEntries
 
             message = newEntries.isEmpty
-                ? "Архив пуст."
+                ? tr("Архив пуст.", "Archive is empty.")
                 : ""
 
         } catch {
@@ -486,7 +507,10 @@ private func extractToSelectedFolder(
             to: destinationURL
         )
 
-        message = "Архив успешно распакован!"
+        message = tr(
+            "Архив успешно распакован!",
+            "Archive extracted successfully!"
+        )
 
     } catch {
         showError(error)
@@ -494,11 +518,14 @@ private func extractToSelectedFolder(
 }
 private func closeArchive() {
     archiveURL = nil
-    archiveName = "Архив не выбран"
+    archiveName = tr("Архив не выбран", "No archive selected")
     currentDirectoryPath = ""
     entries = []
     activeGallery = nil
-    message = "Выбери ZIP-архив через кнопку выше."
+    message = tr(
+        "Выбери ZIP-архив через кнопку выше.",
+        "Choose a ZIP archive using the button above."
+    )
 }
 }
 struct GalleryPresentation: Identifiable {
@@ -518,6 +545,7 @@ struct ImageGalleryView: View {
 
     let archiveURL: URL
     let items: [ArchiveImage]
+    let isEnglish: Bool
 
     @State private var selectedIndex: Int
     @Environment(\.dismiss) private var dismiss
@@ -525,10 +553,12 @@ struct ImageGalleryView: View {
     init(
         archiveURL: URL,
         items: [ArchiveImage],
-        initialIndex: Int
+        initialIndex: Int,
+        isEnglish: Bool
     ) {
         self.archiveURL = archiveURL
         self.items = items
+        self.isEnglish = isEnglish
         _selectedIndex = State(initialValue: initialIndex)
     }
 
@@ -548,12 +578,12 @@ struct ImageGalleryView: View {
             .navigationTitle(
                 items.indices.contains(selectedIndex)
                     ? items[selectedIndex].name
-                    : "Фото"
+                    : (isEnglish ? "Photo" : "Фото")
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") {
+                    Button(isEnglish ? "Done" : "Готово") {
                         dismiss()
                     }
                 }
