@@ -719,15 +719,20 @@ struct ImageGalleryView: View {
     }
 }
 
+
+
 private struct ArchiveImagePage: View {
 
     let archiveURL: URL
     let item: ArchiveImage
 
-
     @State private var image: UIImage?
+
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
+
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
 
     var body: some View {
         GeometryReader { geometry in
@@ -735,37 +740,131 @@ private struct ArchiveImagePage: View {
                 Color.black
 
                 if let image {
+                    let fittedSize = fittedImageSize(
+                        image: image.size,
+                        container: geometry.size
+                    )
+
                     Image(uiImage: image)
                         .resizable()
-                        .scaledToFit()
+                        .aspectRatio(contentMode: .fit)
                         .frame(
                             width: geometry.size.width,
                             height: geometry.size.height
                         )
                         .scaleEffect(scale)
-                        .gesture(
-                            MagnificationGesture()
+                        .offset(offset)
+                        .contentShape(Rectangle())
+
+                        // Увеличение двумя пальцами
+                        .simultaneousGesture(
+                            MagnifyGesture()
                                 .onChanged { value in
-                                    scale = min(
-                                        max(lastScale * value, 1),
+                                    let newScale = min(
+                                        max(
+                                            lastScale * value.magnification,
+                                            1
+                                        ),
                                         5
                                     )
+
+                                    let anchor = CGPoint(
+                                        x: value.startAnchor.x * geometry.size.width,
+                                        y: value.startAnchor.y * geometry.size.height
+                                    )
+
+                                    let center = CGPoint(
+                                        x: geometry.size.width / 2,
+                                        y: geometry.size.height / 2
+                                    )
+
+                                    let ratio = newScale / lastScale
+
+                                    let newOffset = CGSize(
+                                        width: (anchor.x - center.x)
+                                            - ((anchor.x - center.x - lastOffset.width) * ratio),
+                                        height: (anchor.y - center.y)
+                                            - ((anchor.y - center.y - lastOffset.height) * ratio)
+                                    )
+
+                                    scale = newScale
+
+                                    if newScale <= 1 {
+                                        offset = .zero
+                                    } else {
+                                        offset = limitedOffset(
+                                            newOffset,
+                                            scale: newScale,
+                                            imageSize: fittedSize,
+                                            containerSize: geometry.size
+                                        )
+                                    }
                                 }
                                 .onEnded { _ in
                                     lastScale = scale
+                                    lastOffset = offset
                                 }
                         )
-                        .onTapGesture(count: 2) {
-                            withAnimation(.spring()) {
+
+                        // Перемещение увеличенного изображения
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 5)
+                                .onChanged { value in
+                                    guard scale > 1 else { return }
+
+                                    let newOffset = CGSize(
+                                        width: lastOffset.width + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+
+                                    offset = limitedOffset(
+                                        newOffset,
+                                        scale: scale,
+                                        imageSize: fittedSize,
+                                        containerSize: geometry.size
+                                    )
+                                }
+                                .onEnded { _ in
+                                    lastOffset = offset
+                                }
+                        )
+
+                        // Двойное нажатие по выбранной области
+                        .onTapGesture(count: 2) { location in
+                            withAnimation(.spring(response: 0.3)) {
                                 if scale > 1 {
                                     scale = 1
                                     lastScale = 1
+                                    offset = .zero
+                                    lastOffset = .zero
                                 } else {
-                                    scale = 2.5
-                                    lastScale = 2.5
+                                    let newScale: CGFloat = 2.5
+
+                                    let center = CGPoint(
+                                        x: geometry.size.width / 2,
+                                        y: geometry.size.height / 2
+                                    )
+
+                                    let newOffset = CGSize(
+                                        width: -(location.x - center.x) * (newScale - 1),
+                                        height: -(location.y - center.y) * (newScale - 1)
+                                    )
+
+                                    scale = newScale
+                                    lastScale = newScale
+
+                                    offset = limitedOffset(
+                                        newOffset,
+                                        scale: newScale,
+                                        imageSize: fittedSize,
+                                        containerSize: geometry.size
+                                    )
+
+                                    lastOffset = offset
                                 }
                             }
                         }
+
                 } else {
                     ProgressView()
                         .tint(.white)
@@ -781,8 +880,51 @@ private struct ArchiveImagePage: View {
             image = nil
             scale = 1
             lastScale = 1
+            offset = .zero
+            lastOffset = .zero
             loadImage()
         }
+    }
+
+    private func fittedImageSize(
+        image: CGSize,
+        container: CGSize
+    ) -> CGSize {
+        guard image.width > 0, image.height > 0 else {
+            return container
+        }
+
+        let ratio = min(
+            container.width / image.width,
+            container.height / image.height
+        )
+
+        return CGSize(
+            width: image.width * ratio,
+            height: image.height * ratio
+        )
+    }
+
+    private func limitedOffset(
+        _ proposed: CGSize,
+        scale: CGFloat,
+        imageSize: CGSize,
+        containerSize: CGSize
+    ) -> CGSize {
+        let maxX = max(
+            0,
+            (imageSize.width * scale - containerSize.width) / 2
+        )
+
+        let maxY = max(
+            0,
+            (imageSize.height * scale - containerSize.height) / 2
+        )
+
+        return CGSize(
+            width: min(max(proposed.width, -maxX), maxX),
+            height: min(max(proposed.height, -maxY), maxY)
+        )
     }
 
     private func loadImage() {
@@ -820,7 +962,8 @@ private struct ArchiveImagePage: View {
             image = loadedImage
 
         } catch {
-            print("Ошибка загрузки изображения: \(error)")
+            print("Image loading error: \(error)")
         }
-    }  
+    }
 }
+
