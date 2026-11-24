@@ -14,9 +14,7 @@ struct HomeView: View {
 
     @State private var currentDirectoryPath = ""
     @State private var entries: [ArchiveEntry] = []
-    @State private var previewImages: [ArchiveImage] = []
-    @State private var previewStartIndex = 0
-    @State private var isImagePreviewPresented = false
+    @State private var activeGallery: GalleryPresentation?
 
     @State private var message = "Выбери ZIP-архив через кнопку выше."
 
@@ -72,14 +70,12 @@ var body: some View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(isPresented: $isImagePreviewPresented) {
-            if let archiveURL {
-                ImageGalleryView(
-                    archiveURL: archiveURL,
-                    items: previewImages,
-                    initialIndex: previewStartIndex
-                )
-            }
+        .sheet(item: $activeGallery) { gallery in
+            ImageGalleryView(
+                archiveURL: gallery.archiveURL,
+                items: gallery.items,
+                initialIndex: gallery.initialIndex
+            )
         }
     }
     .tint(.white)
@@ -261,6 +257,8 @@ private var extractArchiveButton: some View {
     // MARK: - Image preview
 
 private func openImage(_ entry: ArchiveEntry) {
+    guard let archiveURL else { return }
+
     let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp"]
 
     let images = entries
@@ -282,9 +280,11 @@ private func openImage(_ entry: ArchiveEntry) {
         return
     }
 
-    previewImages = images
-    previewStartIndex = selectedIndex
-    isImagePreviewPresented = true
+    activeGallery = GalleryPresentation(
+        archiveURL: archiveURL,
+        items: images,
+        initialIndex: selectedIndex
+    )
 }
     // MARK: - Directory navigation
 
@@ -419,9 +419,8 @@ private func openImage(_ entry: ArchiveEntry) {
                 of: copiedURL
             )
 
-            previewImages = []
-            previewStartIndex = 0
-            isImagePreviewPresented = false
+
+            activeGallery = nil
             archiveURL = copiedURL
             archiveName = sourceURL.lastPathComponent
             currentDirectoryPath = ""
@@ -484,11 +483,15 @@ private func closeArchive() {
     archiveName = "Архив не выбран"
     currentDirectoryPath = ""
     entries = []
-    previewImages = []
-    previewStartIndex = 0
-    isImagePreviewPresented = false
+    activeGallery = nil
     message = "Выбери ZIP-архив через кнопку выше."
 }
+}
+struct GalleryPresentation: Identifiable {
+    let id = UUID()
+    let archiveURL: URL
+    let items: [ArchiveImage]
+    let initialIndex: Int
 }
 struct ArchiveImage: Identifiable {
     let path: String
