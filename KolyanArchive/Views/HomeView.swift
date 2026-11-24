@@ -9,6 +9,8 @@ struct HomeView: View {
     @State private var isImporterPresented = false
     @State private var isChoosingDestination = false
 
+    @State private var isEnglish = false
+
     @State private var archiveName = "Архив не выбран"
     @State private var archiveURL: URL?
 
@@ -84,6 +86,7 @@ var body: some View {
 
     // MARK: - Header
 
+    
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 5) {
@@ -99,17 +102,28 @@ var body: some View {
 
             Spacer()
 
-            Image(systemName: "shippingbox.fill")
-                .font(.system(size: 27))
-                .foregroundStyle(.cyan)
+            Button {
+                isEnglish.toggle()
+            } label: {
+                HStack(spacing: 7) {
+                    Text(isEnglish ? "🇬🇧" : "🇷🇺")
+                        .font(.system(size: 22))
+
+                    Text(isEnglish ? "EN" : "RU")
+                        .font(.system(size: 17, weight: .bold))
+                }
+                .foregroundStyle(.white)
                 .padding(15)
                 .background(
                     Color.white.opacity(0.07),
                     in: RoundedRectangle(cornerRadius: 16)
                 )
+            }
+            .buttonStyle(.plain)
         }
         .padding(.top, 18)
     }
+
 
     // MARK: - Open archive button
 
