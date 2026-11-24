@@ -5,6 +5,9 @@ import ZIPFoundation
 enum ArchiveServiceError: LocalizedError {
     case onlyZIPSupported
     case archiveNotFound
+    case unsafeArchivePath(String)
+    case symbolicLinkNotAllowed
+    case destinationFileExists(String)
 
     var errorDescription: String? {
         switch self {
@@ -12,6 +15,12 @@ enum ArchiveServiceError: LocalizedError {
             return "На этом этапе поддерживаются только ZIP-архивы."
         case .archiveNotFound:
             return "Архив не найден."
+        case .unsafeArchivePath(let path):
+            return "Архив содержит небезопасный путь: \(path)"
+        case .symbolicLinkNotAllowed:
+            return "Архив содержит символическую ссылку. Распаковка отменена."
+        case .destinationFileExists(let path):
+            return "Файл уже существует: \(path)"
         }
     }
 }
@@ -75,7 +84,6 @@ struct ZIPArchiveService {
 
             let childPath = prefix + String(firstComponent)
 
-            // Nested directory
             if components.count > 1 {
                 if items[childPath] == nil {
                     items[childPath] = ArchiveEntry(
@@ -89,7 +97,6 @@ struct ZIPArchiveService {
                 continue
             }
 
-            // Direct child
             if entry.type == .directory {
                 items[childPath] = ArchiveEntry(
                     id: childPath,
@@ -122,20 +129,29 @@ struct ZIPArchiveService {
     // MARK: - Extract archive
 
     func extract(
-        archiveURL: URL,
-        to destinationURL: URL
-    ) throws {
+    archiveURL: URL,
+    to destinationURL: URL
+) throws {
 
-        try FileManager.default.createDirectory(
-            at: destinationURL,
-            withIntermediateDirectories: true
-        )
-
-        try FileManager.default.unzipItem(
-            at: archiveURL,
-            to: destinationURL
-        )
+    guard archiveURL.pathExtension.lowercased() == "zip" else {
+        throw ArchiveServiceError.onlyZIPSupported
     }
+
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else {
+        throw ArchiveServiceError.archiveNotFound
+    }
+
+    try FileManager.default.createDirectory(
+        at: destinationURL,
+        withIntermediateDirectories: true
+    )
+
+    try FileManager.default.unzipItem(
+        at: archiveURL,
+        to: destinationURL,
+        symlinksValidWithin: destinationURL
+    )
+}
 
     // MARK: - Create ZIP
 
