@@ -10,7 +10,6 @@ struct HomeView: View {
 
     @State private var isImporterPresented = false
     @State private var isChoosingDestination = false
-    @State private var showingArchiveInfo = false
     @State private var archiveInfo: ArchiveInfo?
 
     @AppStorage("isEnglish") private var isEnglish = false
@@ -98,16 +97,14 @@ var body: some View {
                 isEnglish: isEnglish
             )
         }
-        .sheet(isPresented: $showingArchiveInfo) {
-            if let archiveInfo {
-                ArchiveInfoView(
-                    info: archiveInfo,
-                    isEnglish: isEnglish
-                )
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
-                .preferredColorScheme(.dark)
-            }
+        .sheet(item: $archiveInfo) { info in
+            ArchiveInfoView(
+                info: info,
+                isEnglish: isEnglish
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
         }
     }
     .tint(.white)
@@ -689,7 +686,6 @@ private func openImage(_ entry: ArchiveEntry) {
                 uncompressedSize: totalUncompressedSize
             )
 
-            showingArchiveInfo = true
 
         } catch {
             showError(error)
@@ -751,7 +747,6 @@ private func closeArchive() {
     entries = []
     activeGallery = nil
     archiveInfo = nil
-    showingArchiveInfo = false
     message = tr(
         "Выбери ZIP-архив через кнопку выше.",
         "Choose a ZIP archive using the button above."
@@ -1417,7 +1412,9 @@ private struct ArchiveTextView: View {
     }
 }
 
-private struct ArchiveInfo {
+private struct ArchiveInfo: Identifiable {
+    let id = UUID()
+
     let archiveSize: UInt64
     let fileCount: Int
     let folderCount: Int
