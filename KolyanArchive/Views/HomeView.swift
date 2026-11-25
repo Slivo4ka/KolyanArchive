@@ -30,6 +30,10 @@ struct HomeView: View {
 
     @State private var errorMessage = ""
     @State private var showingError = false
+    @State private var showingConflictDialog = false
+    @State private var pendingExtractionPlan: ZIPExtractionPlan?
+    @State private var pendingDestinationURL: URL?
+    @State private var pendingIsSelection = false
 
     private let archiveService = ZIPArchiveService()
     private func tr(_ ru: String, _ en: String) -> String {
@@ -99,6 +103,40 @@ var body: some View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
+        }
+        .confirmationDialog(
+            tr(
+                "Обнаружены совпадающие файлы",
+                "Duplicate files detected"
+            ),
+            isPresented: $showingConflictDialog,
+            titleVisibility: .visible
+        ) {
+            Button(
+                tr("Заменить существующие файлы", "Replace existing files")
+            ) {
+                resolvePendingExtraction(.replace)
+            }
+
+            Button(
+                tr("Переименовать новые файлы", "Rename new files")
+            ) {
+                resolvePendingExtraction(.rename)
+            }
+
+            Button(
+                tr("Отмена", "Cancel"),
+                role: .cancel
+            ) {
+                clearPendingExtraction()
+            }
+        } message: {
+            Text(
+                tr(
+                    "В папке назначения уже есть файлы с такими именами. Выбери, что сделать.",
+                    "Files with these names already exist in the destination. Choose what to do."
+                )
+            )
         }
         .fullScreenCover(item: $activeGallery) { gallery in
             ImageGalleryView(
@@ -818,35 +856,20 @@ private func openImage(_ entry: ArchiveEntry) {
 private func extractToSelectedFolder(
     _ result: Result<[URL], Error>
 ) {
-    defer {
-        isChoosingDestination = false
-    }
+    isChoosingDestination = false
 
     do {
         guard let destinationURL = try result.get().first else {
             return
         }
 
-        guard let archiveURL else {
+        guard archiveURL != nil else {
             return
         }
 
-        let hasAccess = destinationURL.startAccessingSecurityScopedResource()
-
-        defer {
-            if hasAccess {
-                destinationURL.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        try archiveService.extract(
-            archiveURL: archiveURL,
-            to: destinationURL
-        )
-
-        message = tr(
-            "Архив успешно распакован!",
-            "Archive extracted successfully!"
+        beginExtraction(
+            to: destinationURL,
+            isSelection: false
         )
 
     } catch {
@@ -859,39 +882,129 @@ private func extractToSelectedFolder(
 private func extractSelectedToFolder(
     _ result: Result<[URL], Error>
 ) {
-    defer {
-        isChoosingDestination = false
-        isExtractingSelection = false
-    }
+    isChoosingDestination = false
+    isExtractingSelection = false
 
     do {
         guard let destinationURL = try result.get().first else {
             return
         }
 
-        guard let archiveURL else {
+        guard archiveURL != nil,
+              !selectedPaths.isEmpty else {
             return
         }
 
-        guard !selectedPaths.isEmpty else {
-            return
-        }
-
-        let hasAccess =
-            destinationURL.startAccessingSecurityScopedResource()
-
-        defer {
-            if hasAccess {
-                destinationURL.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        try archiveService.extractSelected(
-            archiveURL: archiveURL,
-            selectedPaths: selectedPaths,
-            to: destinationURL
+        beginExtraction(
+            to: destinationURL,
+            isSelection: true
         )
 
+    } catch {
+        showError(error)
+    }
+}
+
+// MARK: - Unified extraction
+
+private func beginExtraction(
+    to destinationURL: URL,
+    isSelection: Bool
+) {
+    guard let archiveURL else { return }
+
+    let hasAccess =
+        destinationURL.startAccessingSecurityScopedResource()
+
+    defer {
+        if hasAccess {
+            destinationURL.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    do {
+        let plan: ZIPExtractionPlan
+
+        if isSelection {
+            plan = try archiveService.prepareSelectedExtraction(
+                archiveURL: archiveURL,
+                selectedPaths: selectedPaths,
+                to: destinationURL
+            )
+        } else {
+            plan = try archiveService.prepareFullExtraction(
+                archiveURL: archiveURL,
+                to: destinationURL
+            )
+        }
+
+        // Если есть совпадения — сначала спрашиваем пользователя.
+        if !plan.conflicts.isEmpty {
+            pendingExtractionPlan = plan
+            pendingDestinationURL = destinationURL
+            pendingIsSelection = isSelection
+            showingConflictDialog = true
+            return
+        }
+
+        // Если конфликтов нет — распаковываем сразу.
+        try archiveService.performExtraction(
+            plan: plan,
+            to: destinationURL,
+            resolution: .replace
+        )
+
+        extractionDidFinish(isSelection: isSelection)
+
+    } catch {
+        showError(error)
+    }
+}
+
+// MARK: - Resolve extraction conflicts
+
+private func resolvePendingExtraction(
+    _ resolution: ZIPConflictResolution
+) {
+    guard let plan = pendingExtractionPlan,
+          let destinationURL = pendingDestinationURL else {
+        clearPendingExtraction()
+        return
+    }
+
+    let hasAccess =
+        destinationURL.startAccessingSecurityScopedResource()
+
+    defer {
+        if hasAccess {
+            destinationURL.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    do {
+        try archiveService.performExtraction(
+            plan: plan,
+            to: destinationURL,
+            resolution: resolution
+        )
+
+        let wasSelection = pendingIsSelection
+
+        clearPendingExtraction()
+
+        extractionDidFinish(isSelection: wasSelection)
+
+    } catch {
+        clearPendingExtraction()
+        showError(error)
+    }
+}
+
+// MARK: - Extraction completed
+
+private func extractionDidFinish(isSelection: Bool) {
+
+    if isSelection {
         selectedPaths.removeAll()
         isSelectionMode = false
 
@@ -899,11 +1012,22 @@ private func extractSelectedToFolder(
             "Выбранные элементы успешно распакованы!",
             "Selected items extracted successfully!"
         )
-
-    } catch {
-        showError(error)
+    } else {
+        message = tr(
+            "Архив успешно распакован!",
+            "Archive extracted successfully!"
+        )
     }
 }
+
+// MARK: - Clear pending extraction
+
+private func clearPendingExtraction() {
+    pendingExtractionPlan = nil
+    pendingDestinationURL = nil
+    pendingIsSelection = false
+}
+
 private func closeArchive() {
     isChoosingDestination = false
     searchText = ""

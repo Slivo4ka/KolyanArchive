@@ -2,6 +2,22 @@
 import Foundation
 import ZIPFoundation
 
+enum ZIPConflictResolution: Equatable {
+    case replace
+    case rename
+}
+
+struct ZIPExtractionPlan {
+    fileprivate let archive: Archive
+    fileprivate let items: [ZIPPlannedItem]
+    let conflicts: [String]
+}
+
+fileprivate struct ZIPPlannedItem {
+    let entry: Entry
+    let path: String
+    let isDirectory: Bool
+}
 enum ArchiveServiceError: LocalizedError {
     case onlyZIPSupported
     case archiveNotFound
@@ -477,5 +493,457 @@ struct ZIPArchiveService {
             shouldKeepParent: true,
             compressionMethod: .deflate
         )
+    }
+}
+// MARK: - Safe extraction with conflict handling
+
+extension ZIPArchiveService {
+
+    func prepareFullExtraction(
+        archiveURL: URL,
+        to destinationURL: URL
+    ) throws -> ZIPExtractionPlan {
+
+        return try makeExtractionPlan(
+            archiveURL: archiveURL,
+            destinationURL: destinationURL,
+            selectedPaths: nil
+        )
+    }
+
+    func prepareSelectedExtraction(
+        archiveURL: URL,
+        selectedPaths: Set<String>,
+        to destinationURL: URL
+    ) throws -> ZIPExtractionPlan {
+
+        guard !selectedPaths.isEmpty else {
+            return ZIPExtractionPlan(
+                archive: try Archive(url: archiveURL, accessMode: .read),
+                items: [],
+                conflicts: []
+            )
+        }
+
+        return try makeExtractionPlan(
+            archiveURL: archiveURL,
+            destinationURL: destinationURL,
+            selectedPaths: selectedPaths
+        )
+    }
+
+    func performExtraction(
+        plan: ZIPExtractionPlan,
+        to destinationURL: URL,
+        resolution: ZIPConflictResolution
+    ) throws {
+
+        let fileManager = FileManager.default
+        let destination = destinationURL.standardizedFileURL
+
+        try fileManager.createDirectory(
+            at: destination,
+            withIntermediateDirectories: true
+        )
+
+        var reservedPaths = Set<String>()
+
+        for item in plan.items {
+
+            var relativePath = item.path
+            var targetURL = try safeTargetURL(
+                relativePath,
+                in: destination
+            )
+
+            if item.isDirectory {
+
+                var isDirectory: ObjCBool = false
+
+                if fileManager.fileExists(
+                    atPath: targetURL.path,
+                    isDirectory: &isDirectory
+                ) {
+                    guard isDirectory.boolValue else {
+                        throw ArchiveServiceError.destinationFileExists(
+                            relativePath
+                        )
+                    }
+                } else {
+                    try fileManager.createDirectory(
+                        at: targetURL,
+                        withIntermediateDirectories: true
+                    )
+                }
+
+                continue
+            }
+
+            // Проверяем, не занято ли имя уже существующим
+            // файлом или ранее обработанной записью архива.
+            let pathIsReserved = reservedPaths.contains(
+                relativePath.lowercased()
+            )
+
+            var isDirectory: ObjCBool = false
+            var exists = fileManager.fileExists(
+                atPath: targetURL.path,
+                isDirectory: &isDirectory
+            )
+
+            if exists && isDirectory.boolValue {
+                throw ArchiveServiceError.destinationFileExists(
+                    relativePath
+                )
+            }
+
+            if (exists || pathIsReserved) && resolution == .rename {
+
+                relativePath = try uniqueFileName(
+                    for: relativePath,
+                    in: destination,
+                    reservedPaths: reservedPaths
+                )
+
+                targetURL = try safeTargetURL(
+                    relativePath,
+                    in: destination
+                )
+
+                exists = fileManager.fileExists(
+                    atPath: targetURL.path,
+                    isDirectory: &isDirectory
+                )
+            }
+
+            if exists {
+
+                guard !isDirectory.boolValue else {
+                    throw ArchiveServiceError.destinationFileExists(
+                        relativePath
+                    )
+                }
+
+                guard resolution == .replace else {
+                    throw ArchiveServiceError.destinationFileExists(
+                        relativePath
+                    )
+                }
+
+                try fileManager.removeItem(at: targetURL)
+            }
+
+            try fileManager.createDirectory(
+                at: targetURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+
+            try plan.archive.extract(
+                item.entry,
+                to: targetURL
+            )
+
+            reservedPaths.insert(relativePath.lowercased())
+        }
+    }
+
+    private func makeExtractionPlan(
+        archiveURL: URL,
+        destinationURL: URL,
+        selectedPaths: Set<String>?
+    ) throws -> ZIPExtractionPlan {
+
+        guard archiveURL.pathExtension.lowercased() == "zip" else {
+            throw ArchiveServiceError.onlyZIPSupported
+        }
+
+        guard FileManager.default.fileExists(
+            atPath: archiveURL.path
+        ) else {
+            throw ArchiveServiceError.archiveNotFound
+        }
+
+        let fileManager = FileManager.default
+        let destination = destinationURL.standardizedFileURL
+
+        let archive = try Archive(
+            url: archiveURL,
+            accessMode: .read
+        )
+
+        func normalize(_ rawPath: String) throws -> String {
+
+            guard !rawPath.isEmpty,
+                  !rawPath.hasPrefix("/"),
+                  !rawPath.contains("\\"),
+                  !rawPath.contains("\0") else {
+                throw ArchiveServiceError.unsafeArchivePath(rawPath)
+            }
+
+            var path = rawPath
+
+            while path.hasSuffix("/") {
+                path.removeLast()
+            }
+
+            let components = path.split(
+                separator: "/",
+                omittingEmptySubsequences: false
+            )
+
+            guard !path.isEmpty,
+                  components.allSatisfy({
+                      !$0.isEmpty &&
+                      $0 != "." &&
+                      $0 != ".."
+                  }),
+                  let first = components.first,
+                  !first.contains(":") else {
+                throw ArchiveServiceError.unsafeArchivePath(rawPath)
+            }
+
+            return path
+        }
+
+        let normalizedSelections = try Set(
+            (selectedPaths ?? []).map { try normalize($0) }
+        )
+
+        var archiveEntries: [(entry: Entry, path: String)] = []
+
+        for entry in archive {
+
+            let path = try normalize(entry.path)
+
+            guard entry.type != .symlink else {
+                throw ArchiveServiceError.symbolicLinkNotAllowed
+            }
+
+            archiveEntries.append((entry, path))
+        }
+
+        // Определяем, какие выбранные элементы являются папками.
+        var selectedFolders = Set<String>()
+
+        for selected in normalizedSelections {
+
+            let isFolder = archiveEntries.contains {
+                $0.path == selected &&
+                $0.entry.type == .directory
+            } || archiveEntries.contains {
+                $0.path.hasPrefix(selected + "/")
+            }
+
+            if isFolder {
+                selectedFolders.insert(selected)
+            }
+        }
+
+        var plannedItems: [ZIPPlannedItem] = []
+
+        for item in archiveEntries {
+
+            var targetPath = item.path
+
+            if let _ = selectedPaths {
+
+                // Ищем выбранную папку, которой принадлежит запись.
+                let matchingFolder = selectedFolders
+                    .filter {
+                        item.path == $0 ||
+                        item.path.hasPrefix($0 + "/")
+                    }
+                    .max {
+                        $0.count < $1.count
+                    }
+
+                if let folder = matchingFolder {
+
+                    let folderName = URL(
+                        fileURLWithPath: folder
+                    ).lastPathComponent
+
+                    let suffix = item.path == folder
+                        ? ""
+                        : String(item.path.dropFirst(folder.count + 1))
+
+                    targetPath = suffix.isEmpty
+                        ? folderName
+                        : folderName + "/" + suffix
+
+                } else if normalizedSelections.contains(item.path) {
+
+                    // Отдельно выбранный файл извлекается в корень.
+                    guard item.entry.type != .directory else {
+                        continue
+                    }
+
+                    targetPath = URL(
+                        fileURLWithPath: item.path
+                    ).lastPathComponent
+
+                } else {
+                    continue
+                }
+            }
+
+            plannedItems.append(
+                ZIPPlannedItem(
+                    entry: item.entry,
+                    path: targetPath,
+                    isDirectory: item.entry.type == .directory
+                )
+            )
+        }
+
+        // Проверяем безопасность назначения и существующие конфликты.
+        var conflicts = Set<String>()
+
+        var plannedFilePaths = Set<String>()
+
+        for item in plannedItems {
+
+            let targetURL = try safeTargetURL(
+                item.path,
+                in: destination
+            )
+
+            var isDirectory: ObjCBool = false
+
+            let exists = fileManager.fileExists(
+                atPath: targetURL.path,
+                isDirectory: &isDirectory
+            )
+
+            if exists {
+
+                if item.isDirectory {
+
+                    guard isDirectory.boolValue else {
+                        throw ArchiveServiceError.destinationFileExists(
+                            item.path
+                        )
+                    }
+
+                } else {
+
+                    guard !isDirectory.boolValue else {
+                        throw ArchiveServiceError.destinationFileExists(
+                            item.path
+                        )
+                    }
+
+                    conflicts.insert(item.path)
+                }
+            }
+
+            if !item.isDirectory {
+
+                let key = item.path.lowercased()
+
+                if plannedFilePaths.contains(key) {
+                    conflicts.insert(item.path)
+                }
+
+                plannedFilePaths.insert(key)
+            }
+        }
+
+        return ZIPExtractionPlan(
+            archive: archive,
+            items: plannedItems,
+            conflicts: conflicts.sorted()
+        )
+    }
+
+    private func safeTargetURL(
+        _ path: String,
+        in destination: URL
+    ) throws -> URL {
+
+        let fileManager = FileManager.default
+
+        let target = destination
+            .appendingPathComponent(path)
+            .standardizedFileURL
+
+        let rootPath = destination.path.hasSuffix("/")
+            ? destination.path
+            : destination.path + "/"
+
+        guard target.path.hasPrefix(rootPath) else {
+            throw ArchiveServiceError.unsafeArchivePath(path)
+        }
+
+        func rejectSymlink(_ url: URL) throws {
+
+            guard let attributes = try? fileManager.attributesOfItem(
+                atPath: url.path
+            ),
+            let type = attributes[.type] as? FileAttributeType,
+            type == .typeSymbolicLink else {
+                return
+            }
+
+            throw ArchiveServiceError.symbolicLinkInDestination
+        }
+
+        try rejectSymlink(destination)
+
+        var current = destination
+
+        for component in path.split(separator: "/") {
+
+            current.appendPathComponent(String(component))
+            try rejectSymlink(current)
+        }
+
+        return target
+    }
+
+    private func uniqueFileName(
+        for path: String,
+        in destination: URL,
+        reservedPaths: Set<String>
+    ) throws -> String {
+
+        let fileURL = URL(fileURLWithPath: path)
+
+        let directory = fileURL.deletingLastPathComponent().path
+        let fileName = fileURL.lastPathComponent
+
+        let fileExtension = fileURL.pathExtension
+        let name = fileExtension.isEmpty
+            ? fileName
+            : fileURL.deletingPathExtension().lastPathComponent
+
+        var index = 1
+
+        while true {
+
+            let newName = fileExtension.isEmpty
+                ? "\(name) (\(index))"
+                : "\(name) (\(index)).\(fileExtension)"
+
+            let newPath = directory == "."
+                ? newName
+                : directory + "/" + newName
+
+            let targetURL = try safeTargetURL(
+                newPath,
+                in: destination
+            )
+
+            let exists = FileManager.default.fileExists(
+                atPath: targetURL.path
+            )
+
+            if !exists &&
+                !reservedPaths.contains(newPath.lowercased()) {
+                return newPath
+            }
+
+            index += 1
+        }
     }
 }
