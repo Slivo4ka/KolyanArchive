@@ -282,7 +282,7 @@ var body: some View {
     private var archiveContents: some View {
         VStack(alignment: .leading, spacing: 14) {
 
-            HStack(spacing: 8) {
+            HStack(spacing: 5) {
 
                 if !currentDirectoryPath.isEmpty {
                     Button {
@@ -305,7 +305,7 @@ var body: some View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title2)
                         .foregroundStyle(.cyan)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 32)
                 } else {
                     Text(archiveName)
                         .font(.headline)
@@ -330,7 +330,7 @@ var body: some View {
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.white.opacity(0.7))
                                     .multilineTextAlignment(.center)
-                                    .frame(width: 82, height: 40, alignment: .center)
+                                    .frame(width: 70, height: 36, alignment: .center)
                             }
                             .buttonStyle(.plain)
                         }
@@ -344,7 +344,7 @@ var body: some View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))
                                 .multilineTextAlignment(.center)
-                                .frame(width: 76, height: 40, alignment: .center)
+                                .frame(width: 68, height: 36, alignment: .center)
                         }
                         .buttonStyle(.plain)
 
@@ -356,7 +356,7 @@ var body: some View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.cyan)
                                 .multilineTextAlignment(.center)
-                                .frame(width: 58, height: 40, alignment: .center)
+                                .frame(width: 48, height: 36, alignment: .center)
                         }
                         .buttonStyle(.plain)
 
