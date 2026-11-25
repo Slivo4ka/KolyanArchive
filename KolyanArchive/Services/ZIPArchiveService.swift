@@ -206,7 +206,8 @@ struct ZIPArchiveService {
 
     func extract(
         archiveURL: URL,
-        to destinationURL: URL
+        to destinationURL: URL,
+        folderName: String
     ) throws -> URL {
 
         try validateArchive(archiveURL)
@@ -217,7 +218,7 @@ struct ZIPArchiveService {
         )
 
         let outputFolder = try createUniqueArchiveFolder(
-            archiveURL: archiveURL,
+            folderName: folderName,
             inside: destinationURL
         )
 
@@ -268,7 +269,8 @@ struct ZIPArchiveService {
     func extractSelected(
         archiveURL: URL,
         selectedPaths: Set<String>,
-        to destinationURL: URL
+        to destinationURL: URL,
+        folderName: String
     ) throws -> URL {
 
         try validateArchive(archiveURL)
@@ -354,7 +356,7 @@ struct ZIPArchiveService {
         }
 
         let outputFolder = try createUniqueArchiveFolder(
-            archiveURL: archiveURL,
+            folderName: folderName,
             inside: destinationURL
         )
 
@@ -462,11 +464,25 @@ struct ZIPArchiveService {
     // MARK: - Create unique output folder
 
     private func createUniqueArchiveFolder(
-        archiveURL: URL,
+        folderName: String,
         inside destinationURL: URL
     ) throws -> URL {
 
         let fileManager = FileManager.default
+
+        let cleanName = folderName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !cleanName.isEmpty,
+            cleanName != ".",
+            cleanName != "..",
+            !cleanName.contains("/"),
+            !cleanName.contains("\\"),
+            !cleanName.contains(":"),
+            !cleanName.contains("\0") else {
+            throw ArchiveServiceError.unsafeArchivePath(folderName)
+        }
 
         let destination = destinationURL.standardizedFileURL
 
@@ -475,17 +491,15 @@ struct ZIPArchiveService {
             withIntermediateDirectories: true
         )
 
-        let archiveName = archiveURL.deletingPathExtension().lastPathComponent
-
         var index = 0
 
         while true {
-            let folderName = index == 0
-                ? archiveName
-                : "\(archiveName) (\(index))"
+            let name = index == 0
+                ? cleanName
+                : "\(cleanName) (\(index))"
 
             let candidate = destination.appendingPathComponent(
-                folderName,
+                name,
                 isDirectory: true
             )
 

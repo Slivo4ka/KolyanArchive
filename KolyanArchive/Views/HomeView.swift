@@ -20,6 +20,12 @@ struct HomeView: View {
     @State private var archiveName = "Архив не выбран"
     @State private var archiveURL: URL?
 
+    @State private var isNamingExtractionFolder = false
+    @State private var extractionFolderName = ""
+    @State private var extractionFolderNameSelection: TextSelection?
+    @State private var pendingExtractionIsSelection = false
+    @State private var shouldChooseDestinationAfterNaming = false
+
     @State private var currentDirectoryPath = ""
     @State private var entries: [ArchiveEntry] = []
     @State private var searchText = ""
@@ -118,13 +124,33 @@ var body: some View {
             .presentationDragIndicator(.visible)
             .preferredColorScheme(.dark)
         }
+        .sheet(
+            isPresented: $isNamingExtractionFolder,
+            onDismiss: {
+                if shouldChooseDestinationAfterNaming {
+                    shouldChooseDestinationAfterNaming = false
+                    isChoosingDestination = true
+                    isImporterPresented = true
+                }
+            }
+        ) {
+            extractionNameSheet
+                .presentationDetents([.height(290)])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+        }
     }
     .tint(.white)
 }
 
+    private var archiveFolderDefaultName: String {
+        guard let archiveURL else { return "" }
+
+        let name = archiveURL.deletingPathExtension().lastPathComponent
+        return name
+    }
 
     // MARK: - Header
-
     
     private var header: some View {
         HStack {
@@ -202,8 +228,10 @@ var body: some View {
     private var extractArchiveButton: some View {
         Button {
             isExtractingSelection = false
-            isChoosingDestination = true
-            isImporterPresented = true
+            pendingExtractionIsSelection = false
+            extractionFolderName = archiveFolderDefaultName
+            extractionFolderNameSelection = nil
+            isNamingExtractionFolder = true
         } label: {
             Label(
                 tr("Распаковать весь архив", "Extract entire archive"),
@@ -223,8 +251,10 @@ var body: some View {
     private var selectedExtractButton: some View {
         Button {
             isExtractingSelection = true
-            isChoosingDestination = true
-            isImporterPresented = true
+            pendingExtractionIsSelection = true
+            extractionFolderName = archiveFolderDefaultName
+            extractionFolderNameSelection = nil
+            isNamingExtractionFolder = true
         } label: {
             Label(
                 tr(
@@ -896,14 +926,16 @@ private func beginExtraction(
             extractionFolder = try archiveService.extractSelected(
                 archiveURL: archiveURL,
                 selectedPaths: selectedPaths,
-                to: destinationURL
+                to: destinationURL,
+                folderName: extractionFolderName
             )
 
         } else {
 
             extractionFolder = try archiveService.extract(
                 archiveURL: archiveURL,
-                to: destinationURL
+                to: destinationURL,
+                folderName: extractionFolderName
             )
         }
 
@@ -951,6 +983,90 @@ private func closeArchive() {
         "Choose a ZIP archive using the button above."
     )
 }
+
+private var extractionNameSheet: some View {
+    ZStack {
+        Color(red: 0.035, green: 0.043, blue: 0.075)
+            .ignoresSafeArea()
+
+        VStack(alignment: .leading, spacing: 20) {
+            Text(tr("Название папки", "Folder name"))
+                .font(.title2.bold())
+                .foregroundStyle(.white)
+
+            Text(
+                tr(
+                    "Выбери имя папки, в которую будет распакован архив.",
+                    "Choose the folder name for the extracted archive."
+                )
+            )
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.6))
+
+            TextField(
+                tr("Название папки", "Folder name"),
+                text: $extractionFolderName,
+                selection: $extractionFolderNameSelection
+            )
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(15)
+            .background(
+                Color.white.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 13)
+            )
+            .onAppear {
+                extractionFolderNameSelection = .selection(
+                    range: extractionFolderName.startIndex..<extractionFolderName.endIndex
+                )
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    shouldChooseDestinationAfterNaming = false
+                    isNamingExtractionFolder = false
+                } label: {
+                    Text(tr("Отмена", "Cancel"))
+                        .font(.headline)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            Color.white.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 13)
+                        )
+                }
+
+                Button {
+                    let cleanedName = extractionFolderName
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    guard !cleanedName.isEmpty else { return }
+
+                    extractionFolderName = cleanedName
+                    shouldChooseDestinationAfterNaming = true
+                    isNamingExtractionFolder = false
+                } label: {
+                    Text(tr("Продолжить", "Continue"))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            LinearGradient(
+                                colors: [.indigo, .blue],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 13)
+                        )
+                }
+            }
+        }
+        .padding(24)
+    }
+}
+
 }
 struct GalleryPresentation: Identifiable {
     let id = UUID()
