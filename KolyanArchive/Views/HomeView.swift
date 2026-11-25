@@ -86,7 +86,7 @@ var body: some View {
         .toolbar(.hidden, for: .navigationBar)
         .fileImporter(
             isPresented: $isImporterPresented,
-            allowedContentTypes: isChoosingDestination ? [.folder] : [.zip],
+            allowedContentTypes: isChoosingDestination ? [.folder] : [.data],
             allowsMultipleSelection: false
         ) { result in
             if isChoosingDestination {
