@@ -1022,6 +1022,13 @@ private var extractionNameSheet: some View {
                     range: extractionFolderName.startIndex..<extractionFolderName.endIndex
                 )
             }
+            .onAppear {
+                DispatchQueue.main.async {
+                    extractionFolderNameSelection = TextSelection(
+                        range: extractionFolderName.startIndex..<extractionFolderName.endIndex
+                    )
+                }
+            }
 
             HStack(spacing: 12) {
                 Button {
