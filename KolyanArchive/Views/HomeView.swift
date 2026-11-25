@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 import ZIPFoundation
+import LibArchive
 import WebKit
 import PDFKit
 
@@ -287,56 +288,104 @@ var body: some View {
     private var archiveContents: some View {
         VStack(alignment: .leading, spacing: 14) {
 
-            HStack(spacing: 5) {
+            
+            VStack(spacing: 10) {
 
-                if !currentDirectoryPath.isEmpty {
-                    Button {
-                        goBack()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(.cyan)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                Color.white.opacity(0.08),
-                                in: Circle()
-                            )
+                // Первая строка: навигация и значки
+                HStack(spacing: 8) {
+
+                    if !currentDirectoryPath.isEmpty {
+                        Button {
+                            goBack()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(.cyan)
+                                .frame(width: 36, height: 36)
+                                .background(
+                                    Color.white.opacity(0.08),
+                                    in: Circle()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(tr("Назад", "Back"))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(tr("Назад", "Back"))
-                }
-
-                if isSelectionMode {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.cyan)
-                        .frame(width: 32, height: 32)
-                } else {
-                    Text(archiveName)
-                        .font(.headline)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                
-                if archiveURL != nil {
 
                     if isSelectionMode {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.cyan)
+                            .frame(width: 32, height: 36)
+                    } else {
+                        Text(archiveName)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+
+                    Spacer(minLength: 4)
+
+                    if archiveURL != nil {
+
+                        if !isSelectionMode {
+                            Button {
+                                isSelectionConfirmed = false
+                                isSelectionMode = true
+                            } label: {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.title2)
+                                    .foregroundStyle(.cyan)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                tr("Выбрать файлы", "Select files")
+                            )
+                        }
+
+                        Button {
+                            showArchiveInfo()
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.title2)
+                                .foregroundStyle(.cyan)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            tr("Информация об архиве", "Archive information")
+                        )
+
+                        Button {
+                            closeArchive()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.red.opacity(0.85))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Вторая строка: кнопки режима выбора
+                if archiveURL != nil && isSelectionMode {
+
+                    HStack(spacing: 8) {
 
                         if !isSearching {
                             Button {
                                 let pathsToSelect = displayedEntries
-                                    .filter { !isInsideSelectedFolder($0.path) }
+                                    .filter {
+                                        !isInsideSelectedFolder($0.path)
+                                    }
                                     .map { $0.path }
 
                                 selectedPaths.formUnion(pathsToSelect)
+
                             } label: {
                                 Text(tr("Выбрать всё", "Select all"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.white.opacity(0.7))
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 70, height: 36, alignment: .center)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 36)
                             }
                             .buttonStyle(.plain)
                         }
@@ -349,8 +398,8 @@ var body: some View {
                             Text(tr("Снять всё", "Clear all"))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))
-                                .multilineTextAlignment(.center)
-                                .frame(width: 68, height: 36, alignment: .center)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 36)
                         }
                         .buttonStyle(.plain)
 
@@ -361,53 +410,14 @@ var body: some View {
                             Text(tr("Готово", "Done"))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.cyan)
-                                .multilineTextAlignment(.center)
-                                .frame(width: 48, height: 36, alignment: .center)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 36)
                         }
                         .buttonStyle(.plain)
-
-                    } else {
-
-                        Button {
-                            isSelectionConfirmed = false
-                            isSelectionMode = true
-                        } label: {
-                            Image(systemName: "checkmark.circle")
-                                .font(.title2)
-                                .foregroundStyle(.cyan)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(
-                            tr("Выбрать файлы", "Select files")
-                        )
                     }
-
-                    if !isRARArchive {
-                        Button {
-                            showArchiveInfo()
-                        } label: {
-                            Image(systemName: "info.circle")
-                                .font(.title2)
-                                .foregroundStyle(.cyan)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(
-                            tr("Информация об архиве", "Archive information")
-                        )
-                    }
-
-                    // Кнопка закрытия доступна для ZIP и RAR
-                    Button {
-                        closeArchive()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.red.opacity(0.85))
-                    }
-                    .buttonStyle(.plain)
                 }
-
             }
+
             if archiveURL != nil {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
@@ -937,56 +947,107 @@ private func openImage(_ entry: ArchiveEntry) {
         guard let archiveURL else { return }
 
         do {
-            let archive = try Archive(
-                url: archiveURL,
-                accessMode: .read
-            )
 
-            let allEntries = Array(archive)
-
-            let files = allEntries.filter {
-                $0.type == .file
-            }
-
+            var fileCount = 0
             var folders = Set<String>()
+            var totalUncompressedSize: UInt64 = 0
 
-            for entry in allEntries {
-                let components = entry.path.split(separator: "/")
-                var currentPath = ""
+            if isRARArchive {
 
-                for (index, component) in components.enumerated() {
-                    currentPath += (currentPath.isEmpty ? "" : "/")
-                        + String(component)
+                // Получаем информацию из RAR через LibArchive
+                let reader = ArchiveReader()
+                let allEntries = try reader.entries(at: archiveURL)
 
-                    if index < components.count - 1 ||
-                        entry.type == .directory {
-                        folders.insert(currentPath)
+                for entry in allEntries {
+
+                    let path = entry.path.trimmingCharacters(
+                        in: CharacterSet(charactersIn: "/")
+                    )
+
+                    guard !path.isEmpty else { continue }
+
+                    let components = path.split(separator: "/")
+
+                    let isDirectory =
+                        String(describing: entry.fileType)
+                            .lowercased()
+                            .contains("directory")
+
+                    // Учитываем вложенные папки
+                    if components.count > 1 {
+                        for index in 1..<components.count {
+                            let folderPath = components
+                                .prefix(index)
+                                .joined(separator: "/")
+
+                            folders.insert(folderPath)
+                        }
                     }
+
+                    if isDirectory {
+                        folders.insert(path)
+                    } else {
+                        fileCount += 1
+                        totalUncompressedSize += UInt64(entry.size)
+                    }
+                }
+
+            } else {
+
+                // Существующая логика ZIP через ZIPFoundation
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                let allEntries = Array(archive)
+
+                let files = allEntries.filter {
+                    $0.type == .file
+                }
+
+                fileCount = files.count
+
+                for entry in allEntries {
+                    let components = entry.path.split(separator: "/")
+                    var currentPath = ""
+
+                    for (index, component) in components.enumerated() {
+                        currentPath += (currentPath.isEmpty ? "" : "/")
+                            + String(component)
+
+                        if index < components.count - 1 ||
+                            entry.type == .directory {
+                            folders.insert(currentPath)
+                        }
+                    }
+                }
+
+                totalUncompressedSize = files.reduce(UInt64(0)) {
+                    $0 + UInt64($1.uncompressedSize)
                 }
             }
 
+            // Общий размер самого файла архива
             let attributes = try FileManager.default.attributesOfItem(
                 atPath: archiveURL.path
             )
 
-            let archiveSize = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-
-            let totalUncompressedSize = files.reduce(UInt64(0)) {
-                $0 + UInt64($1.uncompressedSize)
-            }
+            let archiveSize = (attributes[.size] as? NSNumber)?
+                .uint64Value ?? 0
 
             archiveInfo = ArchiveInfo(
                 archiveSize: archiveSize,
-                fileCount: files.count,
+                fileCount: fileCount,
                 folderCount: folders.count,
                 uncompressedSize: totalUncompressedSize
             )
-
 
         } catch {
             showError(error)
         }
     }
+    
     // MARK: - Error handling
 
     private func showError(_ error: Error) {
