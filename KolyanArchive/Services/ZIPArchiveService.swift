@@ -547,10 +547,25 @@ extension ZIPArchiveService {
         )
 
         var reservedPaths = Set<String>()
+        var renamedDirectories: [String: String] = [:]
 
         for item in plan.items {
 
             var relativePath = item.path
+
+            for (original, renamed) in renamedDirectories.sorted(by: {
+                $0.key.count > $1.key.count
+            }) {
+                if relativePath == original {
+                    relativePath = renamed
+                    break
+                }
+
+                if relativePath.hasPrefix(original + "/") {
+                    relativePath = renamed + relativePath.dropFirst(original.count)
+                    break
+                }
+            }
             var targetURL = try safeTargetURL(
                 relativePath,
                 in: destination
@@ -560,16 +575,43 @@ extension ZIPArchiveService {
 
                 var isDirectory: ObjCBool = false
 
-                if fileManager.fileExists(
+                let exists = fileManager.fileExists(
                     atPath: targetURL.path,
                     isDirectory: &isDirectory
-                ) {
+                )
+
+                if exists {
+
                     guard isDirectory.boolValue else {
                         throw ArchiveServiceError.destinationFileExists(
                             relativePath
                         )
                     }
+
+                    if resolution == .rename && !relativePath.contains("/") {
+
+                        let newPath = try uniqueDirectoryName(
+                            for: relativePath,
+                            in: destination
+                        )
+
+                        renamedDirectories[relativePath] = newPath
+
+                        relativePath = newPath
+
+                        targetURL = try safeTargetURL(
+                            relativePath,
+                            in: destination
+                        )
+
+                        try fileManager.createDirectory(
+                            at: targetURL,
+                            withIntermediateDirectories: true
+                        )
+                    }
+
                 } else {
+
                     try fileManager.createDirectory(
                         at: targetURL,
                         withIntermediateDirectories: true
@@ -825,6 +867,10 @@ extension ZIPArchiveService {
                         )
                     }
 
+                    if !item.path.contains("/") {
+                        conflicts.insert(item.path)
+                    }
+
                 } else {
 
                     guard !isDirectory.boolValue else {
@@ -946,4 +992,33 @@ extension ZIPArchiveService {
             index += 1
         }
     }
+private func uniqueDirectoryName(
+    for path: String,
+    in destination: URL
+) throws -> String {
+
+    let directoryName = URL(
+        fileURLWithPath: path
+    ).lastPathComponent
+
+    var index = 1
+
+    while true {
+
+        let newName = "\(directoryName) (\(index))"
+
+        let targetURL = try safeTargetURL(
+            newName,
+            in: destination
+        )
+
+        if !FileManager.default.fileExists(
+            atPath: targetURL.path
+        ) {
+            return newName
+        }
+
+        index += 1
+    }
+}
 }
