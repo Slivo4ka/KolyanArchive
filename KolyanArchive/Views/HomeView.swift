@@ -366,9 +366,9 @@ var body: some View {
                 }
 
                 // Вторая строка: кнопки режима выбора
-                if archiveURL != nil && isSelectionMode {
 
-                    HStack(spacing: 8) {
+                if archiveURL != nil && isSelectionMode {
+                    HStack(spacing: 16) {
 
                         if !isSearching {
                             Button {
@@ -384,10 +384,17 @@ var body: some View {
                                 Text(tr("Выбрать всё", "Select all"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.white.opacity(0.7))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 36)
                             }
                             .buttonStyle(.plain)
+                            .padding(.horizontal, 12)
+                            .background(
+                                Color.white.opacity(0.035),
+                                in: RoundedRectangle(cornerRadius: 9)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 9)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            }
                         }
 
                         Button {
@@ -398,10 +405,17 @@ var body: some View {
                             Text(tr("Снять всё", "Clear all"))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 36)
                         }
                         .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Color.white.opacity(0.035),
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        }
 
                         Button {
                             isSelectionMode = false
@@ -410,11 +424,19 @@ var body: some View {
                             Text(tr("Готово", "Done"))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.cyan)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 36)
                         }
                         .buttonStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Color.white.opacity(0.035),
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
 
@@ -1047,7 +1069,7 @@ private func openImage(_ entry: ArchiveEntry) {
             showError(error)
         }
     }
-    
+
     // MARK: - Error handling
 
     private func showError(_ error: Error) {
