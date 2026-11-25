@@ -165,7 +165,24 @@ struct RARArchiveService {
         try validateArchive(archiveURL)
 
         let entries = try reader.entries(at: archiveURL)
-        try validateEntries(entries)
+
+        for entry in entries {
+            let path = try normalizedPath(entry.path)
+
+            if entry.symlinkTarget != nil ||
+                entry.hardlinkTarget != nil {
+                throw ArchiveServiceError.symbolicLinkNotAllowed
+            }
+
+            let type = String(describing: entry.fileType).lowercased()
+
+            let isDirectory = type.contains("directory")
+            let isRegularFile = type.contains("regular")
+
+            guard isDirectory || isRegularFile else {
+                throw ArchiveServiceError.unsafeArchivePath(path)
+            }
+        }
 
         let outputFolder = try createUniqueArchiveFolder(
             folderName: folderName,
@@ -204,7 +221,24 @@ struct RARArchiveService {
         }
 
         let entries = try reader.entries(at: archiveURL)
-        try validateEntries(entries)
+
+        for entry in entries {
+            let path = try normalizedPath(entry.path)
+
+            if entry.symlinkTarget != nil ||
+                entry.hardlinkTarget != nil {
+                throw ArchiveServiceError.symbolicLinkNotAllowed
+            }
+
+            let type = String(describing: entry.fileType).lowercased()
+
+            let isDirectory = type.contains("directory")
+            let isRegularFile = type.contains("regular")
+
+            guard isDirectory || isRegularFile else {
+                throw ArchiveServiceError.unsafeArchivePath(path)
+            }
+        }
 
         let normalizedSelections = try Set(
             selectedPaths.map { try normalizedPath($0) }
@@ -361,32 +395,6 @@ struct RARArchiveService {
 
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw ArchiveServiceError.archiveNotFound
-        }
-    }
-
-    private func validateEntries(
-        _ entries: [LibArchive.ArchiveEntry]
-    ) throws {
-
-        for entry in entries {
-
-            let path = try normalizedPath(entry.path)
-
-            if entry.symlinkTarget != nil ||
-                entry.hardlinkTarget != nil {
-                throw ArchiveServiceError.symbolicLinkNotAllowed
-            }
-
-            let type = String(
-                describing: entry.fileType
-            ).lowercased()
-
-            let isDirectory = type.contains("directory")
-            let isRegularFile = type.contains("regular")
-
-            guard isDirectory || isRegularFile else {
-                throw ArchiveServiceError.unsafeArchivePath(path)
-            }
         }
     }
 
