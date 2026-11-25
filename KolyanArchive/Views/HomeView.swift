@@ -10,6 +10,9 @@ struct HomeView: View {
 
     @State private var isImporterPresented = false
     @State private var isChoosingDestination = false
+    @State private var isSelectionMode = false
+    @State private var selectedPaths: Set<String> = []
+    @State private var isExtractingSelection = false
     @State private var archiveInfo: ArchiveInfo?
 
     @AppStorage("isEnglish") private var isEnglish = false
@@ -56,6 +59,10 @@ var body: some View {
 
                     if archiveURL != nil {
                         extractArchiveButton
+
+                        if isSelectionMode && !selectedPaths.isEmpty {
+                            selectedExtractButton
+                        }
                     }
 
                     archiveContents
@@ -76,7 +83,11 @@ var body: some View {
             allowsMultipleSelection: false
         ) { result in
             if isChoosingDestination {
-                extractToSelectedFolder(result)
+                if isExtractingSelection {
+                    extractSelectedToFolder(result)
+                } else {
+                    extractToSelectedFolder(result)
+                }
             } else {
                 openSelectedArchive(result)
             }
@@ -187,15 +198,16 @@ var body: some View {
 
     // MARK: - Extract archive button
 
-private var extractArchiveButton: some View {
-    Button {
-        isChoosingDestination = true
-        isImporterPresented = true
-    } label: {
-        Label(
-            tr("Распаковать архив", "Extract archive"),
-            systemImage: "archivebox"
-        )
+    private var extractArchiveButton: some View {
+        Button {
+            isExtractingSelection = false
+            isChoosingDestination = true
+            isImporterPresented = true
+        } label: {
+            Label(
+                tr("Распаковать весь архив", "Extract entire archive"),
+                systemImage: "archivebox"
+            )
             .font(.headline)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 17)
@@ -203,8 +215,32 @@ private var extractArchiveButton: some View {
                 Color.green.opacity(0.8),
                 in: RoundedRectangle(cornerRadius: 16)
             )
+        }
+        .buttonStyle(.plain)
     }
-    .buttonStyle(.plain)
+
+    private var selectedExtractButton: some View {
+        Button {
+            isExtractingSelection = true
+            isChoosingDestination = true
+            isImporterPresented = true
+        } label: {
+            Label(
+                tr(
+                    "Распаковать выбранное (\(selectedPaths.count))",
+                    "Extract selected (\(selectedPaths.count))"
+                ),
+                systemImage: "archivebox"
+            )
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 17)
+            .background(
+                Color.cyan.opacity(0.8),
+                in: RoundedRectangle(cornerRadius: 16)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Archive contents
@@ -238,6 +274,53 @@ private var extractArchiveButton: some View {
                 Spacer()
 
                 if archiveURL != nil {
+
+                    if isSelectionMode {
+
+                        if !isSearching {
+                            Button {
+                                selectedPaths = Set(displayedEntries.map { $0.path })
+                            } label: {
+                                Text(tr("Выбрать всё", "Select all"))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.cyan)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            selectedPaths.removeAll()
+                        } label: {
+                            Text(tr("Снять всё", "Clear all"))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            isSelectionMode = false
+                        } label: {
+                            Text(tr("Готово", "Done"))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+
+                    } else {
+
+                        Button {
+                            isSelectionMode = true
+                        } label: {
+                            Image(systemName: "checkmark.circle")
+                                .font(.title2)
+                                .foregroundStyle(.cyan)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            tr("Выбрать файлы", "Select files")
+                        )
+                    }
+
                     Button {
                         showArchiveInfo()
                     } label: {
@@ -246,7 +329,9 @@ private var extractArchiveButton: some View {
                             .foregroundStyle(.cyan)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(tr("Информация об архиве", "Archive information"))
+                    .accessibilityLabel(
+                        tr("Информация об архиве", "Archive information")
+                    )
 
                     Button {
                         closeArchive()
@@ -398,10 +483,18 @@ private var extractArchiveButton: some View {
 
     private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
         Button {
-            if entry.isDirectory {
-                openDirectory(entry)
-            } else if ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension) {
-                openImage(entry)
+            if isSelectionMode {
+                if selectedPaths.contains(entry.path) {
+                    selectedPaths.remove(entry.path)
+                } else {
+                    selectedPaths.insert(entry.path)
+                }
+            } else {
+                if entry.isDirectory {
+                    openDirectory(entry)
+                } else if ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension) {
+                    openImage(entry)
+                }
             }
         } label: {
             HStack(spacing: 12) {
@@ -426,7 +519,19 @@ private var extractArchiveButton: some View {
 
                 Spacer()
 
-                if entry.isDirectory {
+                if isSelectionMode {
+                    Image(
+                        systemName: selectedPaths.contains(entry.path)
+                        ? "checkmark.circle.fill"
+                        : "circle"
+                    )
+                    .font(.title3)
+                    .foregroundStyle(
+                        selectedPaths.contains(entry.path)
+                        ? .cyan
+                        : .white.opacity(0.35)
+                    )
+                } else if entry.isDirectory {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.white.opacity(0.35))
@@ -437,6 +542,7 @@ private var extractArchiveButton: some View {
         }
         .buttonStyle(.plain)
         .disabled(
+            !isSelectionMode &&
             !entry.isDirectory &&
             !["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension)
         )
@@ -620,6 +726,8 @@ private func openImage(_ entry: ArchiveEntry) {
 
             searchText = ""
             searchResults = []
+            isSelectionMode = false
+            selectedPaths.removeAll()
 
             activeGallery = nil
             archiveURL = copiedURL
@@ -694,9 +802,15 @@ private func openImage(_ entry: ArchiveEntry) {
     // MARK: - Error handling
 
     private func showError(_ error: Error) {
+    if let archiveError = error as? ArchiveServiceError {
+        errorMessage = archiveError.description(isEnglish: isEnglish)
+    } else {
         errorMessage = error.localizedDescription
-        showingError = true
     }
+
+    showingError = true
+}
+
 // MARK: - Extract archive
 
 private func extractToSelectedFolder(
@@ -737,9 +851,64 @@ private func extractToSelectedFolder(
         showError(error)
     }
 }
+
+// MARK: - Extract selected entries
+
+private func extractSelectedToFolder(
+    _ result: Result<[URL], Error>
+) {
+    defer {
+        isChoosingDestination = false
+        isExtractingSelection = false
+    }
+
+    do {
+        guard let destinationURL = try result.get().first else {
+            return
+        }
+
+        guard let archiveURL else {
+            return
+        }
+
+        guard !selectedPaths.isEmpty else {
+            return
+        }
+
+        let hasAccess =
+            destinationURL.startAccessingSecurityScopedResource()
+
+        defer {
+            if hasAccess {
+                destinationURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        try archiveService.extractSelected(
+            archiveURL: archiveURL,
+            selectedPaths: selectedPaths,
+            to: destinationURL
+        )
+
+        selectedPaths.removeAll()
+        isSelectionMode = false
+
+        message = tr(
+            "Выбранные элементы успешно распакованы!",
+            "Selected items extracted successfully!"
+        )
+
+    } catch {
+        showError(error)
+    }
+}
 private func closeArchive() {
     searchText = ""
     searchResults = []
+
+    isSelectionMode = false
+    selectedPaths.removeAll()
+    isExtractingSelection = false
 
     archiveURL = nil
     archiveName = tr("Архив не выбран", "No archive selected")
