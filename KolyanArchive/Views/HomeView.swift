@@ -1855,9 +1855,9 @@ struct ExtractionNameTextField: UIViewRepresentable {
         textField.backgroundColor = .clear
         textField.textColor = .white
         textField.tintColor = .white
-        textField.font = .system(
-            size: 16,
-            weight: .medium
+        textField.font = UIFont.systemFont(
+            ofSize: 16,
+            weight: UIFont.Weight.medium
         )
 
         textField.attributedPlaceholder = NSAttributedString(
