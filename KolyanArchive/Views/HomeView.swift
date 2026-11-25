@@ -1015,7 +1015,9 @@ private var extractionNameSheet: some View {
                 Color.white.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: 13)
             )
-            .onAppear {
+            .onChange(of: isNamingExtractionFolder) { _, isPresented in
+                guard isPresented else { return }
+
                 extractionFolderNameSelection = TextSelection(
                     range: extractionFolderName.startIndex..<extractionFolderName.endIndex
                 )
