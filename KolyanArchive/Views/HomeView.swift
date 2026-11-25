@@ -905,6 +905,7 @@ private func extractSelectedToFolder(
     }
 }
 private func closeArchive() {
+    isChoosingDestination = false
     searchText = ""
     searchResults = []
 
