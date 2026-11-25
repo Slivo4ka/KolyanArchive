@@ -23,6 +23,7 @@ struct HomeView: View {
     @State private var isNamingExtractionFolder = false
     @State private var extractionFolderName = ""
     @State private var extractionFolderNameSelection: TextSelection?
+    @FocusState private var isExtractionNameFocused: Bool
     @State private var pendingExtractionIsSelection = false
     @State private var shouldChooseDestinationAfterNaming = false
 
@@ -231,6 +232,7 @@ var body: some View {
             pendingExtractionIsSelection = false
             extractionFolderName = archiveFolderDefaultName
             extractionFolderNameSelection = nil
+            isExtractionNameFocused = false
             isNamingExtractionFolder = true
         } label: {
             Label(
@@ -253,7 +255,11 @@ var body: some View {
             isExtractingSelection = true
             pendingExtractionIsSelection = true
             extractionFolderName = archiveFolderDefaultName
-            extractionFolderNameSelection = nil
+
+            extractionFolderNameSelection = TextSelection(
+                range: archiveFolderDefaultName.startIndex..<archiveFolderDefaultName.endIndex
+            )
+
             isNamingExtractionFolder = true
         } label: {
             Label(
@@ -1008,6 +1014,7 @@ private var extractionNameSheet: some View {
                 text: $extractionFolderName,
                 selection: $extractionFolderNameSelection
             )
+            .focused($isExtractionNameFocused)
             .font(.system(size: 16, weight: .medium))
             .foregroundStyle(.white)
             .padding(15)
@@ -1015,13 +1022,12 @@ private var extractionNameSheet: some View {
                 Color.white.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: 13)
             )
-            
-            .onAppear {
-                DispatchQueue.main.async {
-                    extractionFolderNameSelection = TextSelection(
-                        range: extractionFolderName.startIndex..<extractionFolderName.endIndex
-                    )
-                }
+            .onChange(of: isExtractionNameFocused) { _, isFocused in
+                guard isFocused else { return }
+
+                extractionFolderNameSelection = TextSelection(
+                    range: extractionFolderName.startIndex..<extractionFolderName.endIndex
+                )
             }
 
             HStack(spacing: 12) {
@@ -1065,6 +1071,9 @@ private var extractionNameSheet: some View {
                         )
                 }
             }
+        }
+        .onDisappear {
+            isExtractionNameFocused = false
         }
         .padding(24)
     }
