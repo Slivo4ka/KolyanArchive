@@ -6,6 +6,8 @@ struct RARArchiveService {
 
     private let reader = ArchiveReader()
 
+    // MARK: - List archive contents
+
     func listContents(
         of archiveURL: URL,
         in directoryPath: String = ""
@@ -76,6 +78,8 @@ struct RARArchiveService {
                 == .orderedAscending
         }
     }
+
+    // MARK: - Search archive contents
 
     func searchContents(
         of archiveURL: URL,
@@ -148,5 +152,368 @@ struct RARArchiveService {
                 return $0.path.localizedStandardCompare($1.path)
                     == .orderedAscending
             }
+    }
+
+    // MARK: - Full extraction
+
+    func extract(
+        archiveURL: URL,
+        to destinationURL: URL,
+        folderName: String
+    ) throws -> URL {
+
+        try validateArchive(archiveURL)
+
+        let entries = try reader.entries(at: archiveURL)
+        try validateEntries(entries)
+
+        let outputFolder = try createUniqueArchiveFolder(
+            folderName: folderName,
+            inside: destinationURL
+        )
+
+        do {
+            try reader.extract(
+                archiveURL,
+                to: outputFolder,
+                options: [.safeWrites, .noOverwrite],
+                permissionMode: .normalized
+            )
+
+            return outputFolder
+
+        } catch {
+            try? FileManager.default.removeItem(at: outputFolder)
+            throw error
+        }
+    }
+
+    // MARK: - Selected extraction
+
+    func extractSelected(
+        archiveURL: URL,
+        selectedPaths: Set<String>,
+        to destinationURL: URL,
+        folderName: String
+    ) throws -> URL {
+
+        try validateArchive(archiveURL)
+
+        guard !selectedPaths.isEmpty else {
+            throw ArchiveServiceError.noSelectedEntries
+        }
+
+        let entries = try reader.entries(at: archiveURL)
+        try validateEntries(entries)
+
+        let normalizedSelections = try Set(
+            selectedPaths.map { try normalizedPath($0) }
+        )
+
+        let archivePaths = try entries.map {
+            try normalizedPath($0.path)
+        }
+
+        var selectedFolders = Set<String>()
+
+        for selected in normalizedSelections {
+            let isFolder = archivePaths.contains {
+                $0.hasPrefix(selected + "/")
+            }
+
+            if isFolder {
+                selectedFolders.insert(selected)
+            }
+        }
+
+        let effectiveSelections = normalizedSelections.filter { selected in
+            !selectedFolders.contains { folder in
+                folder != selected &&
+                selected.hasPrefix(folder + "/")
+            }
+        }
+
+        selectedFolders = selectedFolders.intersection(
+            effectiveSelections
+        )
+
+        var plannedItems: [(source: String, target: String)] = []
+
+        for selected in effectiveSelections {
+
+            if selectedFolders.contains(selected) {
+
+                let folderName = URL(
+                    fileURLWithPath: selected
+                ).lastPathComponent
+
+                plannedItems.append((
+                    source: selected,
+                    target: folderName
+                ))
+
+            } else if archivePaths.contains(selected) {
+
+                let fileName = URL(
+                    fileURLWithPath: selected
+                ).lastPathComponent
+
+                plannedItems.append((
+                    source: selected,
+                    target: fileName
+                ))
+            }
+        }
+
+        guard !plannedItems.isEmpty else {
+            throw ArchiveServiceError.noSelectedEntries
+        }
+
+        let outputFolder = try createUniqueArchiveFolder(
+            folderName: folderName,
+            inside: destinationURL
+        )
+
+        let temporaryFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        do {
+            try FileManager.default.createDirectory(
+                at: temporaryFolder,
+                withIntermediateDirectories: true
+            )
+
+            defer {
+                try? FileManager.default.removeItem(at: temporaryFolder)
+            }
+
+            // LibArchive безопасно распаковывает архив во временную папку.
+            try reader.extract(
+                archiveURL,
+                to: temporaryFolder,
+                options: [.safeWrites, .noOverwrite],
+                permissionMode: .normalized
+            )
+
+            var extractedPaths = Set<String>()
+
+            for item in plannedItems {
+
+                let sourcePath = try normalizedPath(item.source)
+                let targetPath = try normalizedPath(item.target)
+
+                guard extractedPaths.insert(
+                    targetPath.lowercased()
+                ).inserted else {
+                    throw ArchiveServiceError.destinationFileExists(
+                        targetPath
+                    )
+                }
+
+                let sourceURL = temporaryFolder
+                    .appendingPathComponent(sourcePath)
+                    .standardizedFileURL
+
+                guard FileManager.default.fileExists(
+                    atPath: sourceURL.path
+                ) else {
+                    throw ArchiveServiceError.noSelectedEntries
+                }
+
+                let targetURL = try safeTargetURL(
+                    targetPath,
+                    inside: outputFolder
+                )
+
+                try FileManager.default.createDirectory(
+                    at: targetURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+
+                guard !FileManager.default.fileExists(
+                    atPath: targetURL.path
+                ) else {
+                    throw ArchiveServiceError.destinationFileExists(
+                        targetPath
+                    )
+                }
+
+                try FileManager.default.copyItem(
+                    at: sourceURL,
+                    to: targetURL
+                )
+            }
+
+            return outputFolder
+
+        } catch {
+            try? FileManager.default.removeItem(at: outputFolder)
+            throw error
+        }
+    }
+
+    // MARK: - Validation
+
+    private func validateArchive(_ url: URL) throws {
+        guard url.pathExtension.lowercased() == "rar" else {
+            throw ArchiveServiceError.onlyZIPSupported
+        }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw ArchiveServiceError.archiveNotFound
+        }
+    }
+
+    private func validateEntries(
+        _ entries: [LibArchive.ArchiveEntry]
+    ) throws {
+
+        for entry in entries {
+
+            let path = try normalizedPath(entry.path)
+
+            if entry.symlinkTarget != nil ||
+                entry.hardlinkTarget != nil {
+                throw ArchiveServiceError.symbolicLinkNotAllowed
+            }
+
+            let type = String(
+                describing: entry.fileType
+            ).lowercased()
+
+            let isDirectory = type.contains("directory")
+            let isRegularFile = type.contains("regular")
+
+            guard isDirectory || isRegularFile else {
+                throw ArchiveServiceError.unsafeArchivePath(path)
+            }
+        }
+    }
+
+    private func normalizedPath(
+        _ rawPath: String
+    ) throws -> String {
+
+        guard !rawPath.isEmpty,
+              !rawPath.hasPrefix("/"),
+              !rawPath.contains("\\"),
+              !rawPath.contains("\0") else {
+            throw ArchiveServiceError.unsafeArchivePath(rawPath)
+        }
+
+        var path = rawPath
+
+        while path.hasSuffix("/") {
+            path.removeLast()
+        }
+
+        let components = path.split(
+            separator: "/",
+            omittingEmptySubsequences: false
+        )
+
+        guard !path.isEmpty,
+              components.allSatisfy({
+                  !$0.isEmpty && $0 != "." && $0 != ".."
+              }),
+              let first = components.first,
+              !first.contains(":") else {
+            throw ArchiveServiceError.unsafeArchivePath(rawPath)
+        }
+
+        return path
+    }
+
+    // MARK: - Create unique output folder
+
+    private func createUniqueArchiveFolder(
+        folderName: String,
+        inside destinationURL: URL
+    ) throws -> URL {
+
+        let fileManager = FileManager.default
+
+        let cleanName = folderName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !cleanName.isEmpty,
+              cleanName != ".",
+              cleanName != "..",
+              !cleanName.contains("/"),
+              !cleanName.contains("\\"),
+              !cleanName.contains(":"),
+              !cleanName.contains("\0") else {
+            throw ArchiveServiceError.unsafeArchivePath(folderName)
+        }
+
+        let destination = destinationURL.standardizedFileURL
+
+        try fileManager.createDirectory(
+            at: destination,
+            withIntermediateDirectories: true
+        )
+
+        var index = 0
+
+        while true {
+            let name = index == 0
+                ? cleanName
+                : "\(cleanName) (\(index))"
+
+            let candidate = destination.appendingPathComponent(
+                name,
+                isDirectory: true
+            )
+
+            if !fileManager.fileExists(atPath: candidate.path) {
+                try fileManager.createDirectory(
+                    at: candidate,
+                    withIntermediateDirectories: false
+                )
+
+                return candidate
+            }
+
+            index += 1
+        }
+    }
+
+    // MARK: - Safe destination path
+
+    private func safeTargetURL(
+        _ path: String,
+        inside destination: URL
+    ) throws -> URL {
+
+        let fileManager = FileManager.default
+
+        let target = destination
+            .appendingPathComponent(path)
+            .standardizedFileURL
+
+        let rootPath = destination.path.hasSuffix("/")
+            ? destination.path
+            : destination.path + "/"
+
+        guard target.path.hasPrefix(rootPath) else {
+            throw ArchiveServiceError.unsafeArchivePath(path)
+        }
+
+        var current = destination
+
+        for component in path.split(separator: "/") {
+            current.appendPathComponent(String(component))
+
+            if let attributes = try? fileManager.attributesOfItem(
+                atPath: current.path
+            ),
+            let type = attributes[.type] as? FileAttributeType,
+            type == .typeSymbolicLink {
+                throw ArchiveServiceError.symbolicLinkInDestination
+            }
+        }
+
+        return target
     }
 }
