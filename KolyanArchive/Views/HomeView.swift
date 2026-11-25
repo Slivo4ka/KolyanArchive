@@ -69,7 +69,7 @@ var body: some View {
                     header
                     openArchiveButton
 
-                    if archiveURL != nil && !isRARArchive {
+                    if archiveURL != nil {
                         extractArchiveButton
 
                         if isSelectionConfirmed && !selectedPaths.isEmpty {
@@ -322,68 +322,67 @@ var body: some View {
                 
                 if archiveURL != nil {
 
-                    if !isRARArchive {
+                    if isSelectionMode {
 
-                        if isSelectionMode {
-
-                            if !isSearching {
-                                Button {
-                                    let pathsToSelect = displayedEntries
-                                        .filter { !isInsideSelectedFolder($0.path) }
-                                        .map { $0.path }
-
-                                    selectedPaths.formUnion(pathsToSelect)
-                                } label: {
-                                    Text(tr("Выбрать всё", "Select all"))
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.white.opacity(0.7))
-                                        .multilineTextAlignment(.center)
-                                        .frame(width: 70, height: 36, alignment: .center)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
+                        if !isSearching {
                             Button {
-                                selectedPaths.subtract(
-                                    displayedEntries.map { $0.path }
-                                )
+                                let pathsToSelect = displayedEntries
+                                    .filter { !isInsideSelectedFolder($0.path) }
+                                    .map { $0.path }
+
+                                selectedPaths.formUnion(pathsToSelect)
                             } label: {
-                                Text(tr("Снять всё", "Clear all"))
+                                Text(tr("Выбрать всё", "Select all"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.white.opacity(0.7))
                                     .multilineTextAlignment(.center)
-                                    .frame(width: 68, height: 36, alignment: .center)
+                                    .frame(width: 70, height: 36, alignment: .center)
                             }
                             .buttonStyle(.plain)
-
-                            Button {
-                                isSelectionMode = false
-                                isSelectionConfirmed = true
-                            } label: {
-                                Text(tr("Готово", "Done"))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.cyan)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 48, height: 36, alignment: .center)
-                            }
-                            .buttonStyle(.plain)
-
-                        } else {
-
-                            Button {
-                                isSelectionConfirmed = false
-                                isSelectionMode = true
-                            } label: {
-                                Image(systemName: "checkmark.circle")
-                                    .font(.title2)
-                                    .foregroundStyle(.cyan)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(
-                                tr("Выбрать файлы", "Select files")
-                            )
                         }
 
+                        Button {
+                            selectedPaths.subtract(
+                                displayedEntries.map { $0.path }
+                            )
+                        } label: {
+                            Text(tr("Снять всё", "Clear all"))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .multilineTextAlignment(.center)
+                                .frame(width: 68, height: 36, alignment: .center)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            isSelectionMode = false
+                            isSelectionConfirmed = true
+                        } label: {
+                            Text(tr("Готово", "Done"))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.cyan)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 48, height: 36, alignment: .center)
+                        }
+                        .buttonStyle(.plain)
+
+                    } else {
+
+                        Button {
+                            isSelectionConfirmed = false
+                            isSelectionMode = true
+                        } label: {
+                            Image(systemName: "checkmark.circle")
+                                .font(.title2)
+                                .foregroundStyle(.cyan)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            tr("Выбрать файлы", "Select files")
+                        )
+                    }
+
+                    if !isRARArchive {
                         Button {
                             showArchiveInfo()
                         } label: {
@@ -680,12 +679,9 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
         .disabled(
             !entry.isDirectory &&
             (
-                isRARArchive ||
-                (
-                    isSelectionMode
-                        ? isCovered
-                        : !isPreviewable
-                )
+                isSelectionMode
+                    ? isCovered
+                    : (isRARArchive || !isPreviewable)
             )
         )
 
@@ -1074,22 +1070,39 @@ private func beginExtraction(
 
         let extractionFolder: URL
 
-        if isSelection {
+        if isRARArchive {
 
-            extractionFolder = try archiveService.extractSelected(
-                archiveURL: archiveURL,
-                selectedPaths: selectedPaths,
-                to: destinationURL,
-                folderName: extractionFolderName
-            )
+            if isSelection {
+                extractionFolder = try rarArchiveService.extractSelected(
+                    archiveURL: archiveURL,
+                    selectedPaths: selectedPaths,
+                    to: destinationURL,
+                    folderName: extractionFolderName
+                )
+            } else {
+                extractionFolder = try rarArchiveService.extract(
+                    archiveURL: archiveURL,
+                    to: destinationURL,
+                    folderName: extractionFolderName
+                )
+            }
 
         } else {
 
-            extractionFolder = try archiveService.extract(
-                archiveURL: archiveURL,
-                to: destinationURL,
-                folderName: extractionFolderName
-            )
+            if isSelection {
+                extractionFolder = try archiveService.extractSelected(
+                    archiveURL: archiveURL,
+                    selectedPaths: selectedPaths,
+                    to: destinationURL,
+                    folderName: extractionFolderName
+                )
+            } else {
+                extractionFolder = try archiveService.extract(
+                    archiveURL: archiveURL,
+                    to: destinationURL,
+                    folderName: extractionFolderName
+                )
+            }
         }
 
         let folderName = extractionFolder.lastPathComponent
