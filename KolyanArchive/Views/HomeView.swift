@@ -39,6 +39,11 @@ struct HomeView: View {
     @State private var showingError = false
 
     private let archiveService = ZIPArchiveService()
+    private let rarArchiveService = RARArchiveService()
+
+    private var isRARArchive: Bool {
+        archiveURL?.pathExtension.lowercased() == "rar"
+    }
     private func tr(_ ru: String, _ en: String) -> String {
         isEnglish ? en : ru
     }
@@ -64,7 +69,7 @@ var body: some View {
                     header
                     openArchiveButton
 
-                    if archiveURL != nil {
+                    if archiveURL != nil && !isRARArchive {
                         extractArchiveButton
 
                         if isSelectionConfirmed && !selectedPaths.isEmpty {
@@ -314,7 +319,7 @@ var body: some View {
 
                 Spacer()
 
-                if archiveURL != nil {
+                if archiveURL != nil && !isRARArchive {
 
                     if isSelectionMode {
 
@@ -510,6 +515,42 @@ var body: some View {
 
     // MARK: - Search
 
+    // MARK: - Archive reading
+
+    private func listArchiveContents(
+        of url: URL,
+        in directoryPath: String = ""
+    ) throws -> [ArchiveEntry] {
+        if url.pathExtension.lowercased() == "rar" {
+            return try rarArchiveService.listContents(
+                of: url,
+                in: directoryPath
+            )
+        }
+
+        return try archiveService.listContents(
+            of: url,
+            in: directoryPath
+        )
+    }
+
+    private func searchArchiveContents(
+        of url: URL,
+        matching query: String
+    ) throws -> [ArchiveEntry] {
+        if url.pathExtension.lowercased() == "rar" {
+            return try rarArchiveService.searchContents(
+                of: url,
+                matching: query
+            )
+        }
+
+        return try archiveService.searchContents(
+            of: url,
+            matching: query
+        )
+    }
+
     private func performSearch(_ query: String) {
         guard let archiveURL else {
             searchResults = []
@@ -526,7 +567,7 @@ var body: some View {
         }
 
         do {
-            searchResults = try archiveService.searchContents(
+            searchResults = try searchArchiveContents(
                 of: archiveURL,
                 matching: trimmedQuery
             )
@@ -569,7 +610,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
                     selectedPaths.insert(entry.path)
                 }
 
-            } else if isPreviewable {
+            } else if isPreviewable && !isRARArchive {
                 openImage(entry)
             }
 
@@ -633,9 +674,12 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
         .disabled(
             !entry.isDirectory &&
             (
-                isSelectionMode
-                    ? isCovered
-                    : !isPreviewable
+                isRARArchive ||
+                (
+                    isSelectionMode
+                        ? isCovered
+                        : !isPreviewable
+                )
             )
         )
 
@@ -725,7 +769,7 @@ private func openImage(_ entry: ArchiveEntry) {
         do {
             currentDirectoryPath = entry.path
 
-            entries = try archiveService.listContents(
+            entries = try listArchiveContents(
                 of: archiveURL,
                 in: currentDirectoryPath
             )
@@ -752,7 +796,7 @@ private func openImage(_ entry: ArchiveEntry) {
         guard let archiveURL else { return }
 
         do {
-            entries = try archiveService.listContents(
+            entries = try listArchiveContents(
                 of: archiveURL,
                 in: currentDirectoryPath
             )
@@ -780,8 +824,8 @@ private func openImage(_ entry: ArchiveEntry) {
             featureCard(
                 "RAR",
                 detail: tr(
-                    "Распаковка — следующий этап",
-                    "Extraction — coming next"
+                    "Просмотр содержимого",
+                    "Browse archive contents"
                 ),
                 symbol: "archivebox"
             )
@@ -861,7 +905,7 @@ private func openImage(_ entry: ArchiveEntry) {
                 to: copiedURL
             )
 
-            let newEntries = try archiveService.listContents(
+            let newEntries = try listArchiveContents(
                 of: copiedURL
             )
 
