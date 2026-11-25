@@ -282,7 +282,7 @@ var body: some View {
     private var archiveContents: some View {
         VStack(alignment: .leading, spacing: 14) {
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
 
                 if !currentDirectoryPath.isEmpty {
                     Button {
@@ -301,9 +301,16 @@ var body: some View {
                     .accessibilityLabel(tr("Назад", "Back"))
                 }
 
-                Text(archiveName)
-                    .font(.headline)
-                    .lineLimit(1)
+                if isSelectionMode {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.cyan)
+                        .frame(width: 36, height: 36)
+                } else {
+                    Text(archiveName)
+                        .font(.headline)
+                        .lineLimit(1)
+                }
 
                 Spacer()
 
@@ -321,7 +328,9 @@ var body: some View {
                             } label: {
                                 Text(tr("Выбрать всё", "Select all"))
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.cyan)
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .multilineTextAlignment(.center)
+                                    .frame(width: 82, height: 40, alignment: .center)
                             }
                             .buttonStyle(.plain)
                         }
@@ -334,6 +343,8 @@ var body: some View {
                             Text(tr("Снять всё", "Clear all"))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))
+                                .multilineTextAlignment(.center)
+                                .frame(width: 76, height: 40, alignment: .center)
                         }
                         .buttonStyle(.plain)
 
@@ -343,7 +354,9 @@ var body: some View {
                         } label: {
                             Text(tr("Готово", "Done"))
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .foregroundStyle(.cyan)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 58, height: 40, alignment: .center)
                         }
                         .buttonStyle(.plain)
 
