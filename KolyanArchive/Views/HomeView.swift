@@ -1022,12 +1022,16 @@ private var extractionNameSheet: some View {
                 Color.white.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: 13)
             )
-            .onChange(of: isExtractionNameFocused) { _, isFocused in
-                guard isFocused else { return }
+            .onAppear {
+                DispatchQueue.main.async {
+                    isExtractionNameFocused = true
 
-                extractionFolderNameSelection = TextSelection(
-                    range: extractionFolderName.startIndex..<extractionFolderName.endIndex
-                )
+                    DispatchQueue.main.async {
+                        extractionFolderNameSelection = TextSelection(
+                            range: extractionFolderName.startIndex..<extractionFolderName.endIndex
+                        )
+                    }
+                }
             }
 
             HStack(spacing: 12) {
