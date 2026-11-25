@@ -8,6 +8,9 @@ packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation
     from: 0.9.21
+  LibArchive:
+    url: https://github.com/kmworks/libarchive-swift
+    from: 0.1.6
 
 targets:
   KolyanArchive:
@@ -29,3 +32,5 @@ targets:
     dependencies:
       - package: ZIPFoundation
         product: ZIPFoundation
+      - package: LibArchive
+        product: LibArchive
