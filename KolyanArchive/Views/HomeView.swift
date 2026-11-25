@@ -279,14 +279,16 @@ var body: some View {
 
                         if !isSearching {
                             Button {
-                                selectedPaths = Set(displayedEntries.map { $0.path })
+                                selectedPaths = Set(displayedEntries
+                                    .filter { !$0.isDirectory }
+                                    .map { $0.path })
                             } label: {
                                 Text(tr("Выбрать всё", "Select all"))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.cyan)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.cyan)
                             }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
 
                         Button {
                             selectedPaths.removeAll()
