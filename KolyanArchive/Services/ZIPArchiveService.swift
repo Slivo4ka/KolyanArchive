@@ -314,6 +314,17 @@ struct ZIPArchiveService {
             }
         }
 
+        // Убираем вложенные выборы, если их родительская папка
+        // уже выбрана целиком.
+        let effectiveSelections = selections.filter { selected in
+            !selectedFolders.contains { folder in
+                folder != selected &&
+                selected.hasPrefix(folder + "/")
+            }
+        }
+
+        selectedFolders = selectedFolders.intersection(effectiveSelections)
+
         var plannedEntries: [(entry: Entry, path: String)] = []
 
         for item in archiveEntries {
@@ -341,7 +352,7 @@ struct ZIPArchiveService {
 
                 plannedEntries.append((item.entry, targetPath))
 
-            } else if selections.contains(item.path),
+            } else if effectiveSelections.contains(item.path),
                       item.entry.type != .directory {
 
                 plannedEntries.append((

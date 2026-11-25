@@ -312,11 +312,14 @@ var body: some View {
 
                         if !isSearching {
                             Button {
-                                selectedPaths.formUnion(
-                                    displayedEntries
-                                        .filter { !$0.isDirectory }
-                                        .map { $0.path }
-                                )
+                                let pathsToSelect = displayedEntries
+                                    .filter {
+                                        !$0.isDirectory &&
+                                        !isInsideSelectedFolder($0.path)
+                                    }
+                                    .map { $0.path }
+
+                                selectedPaths.formUnion(pathsToSelect)
                             } label: {
                                 Text(tr("Выбрать всё", "Select all"))
                                     .font(.caption.weight(.semibold))
@@ -516,72 +519,153 @@ var body: some View {
             showError(error)
         }
     }
+
     // MARK: - Entry row
 
-    
-private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
-    Button {
-        if entry.isDirectory {
-            openDirectory(entry)
-        } else if isSelectionMode {
-            if selectedPaths.contains(entry.path) {
-                selectedPaths.remove(entry.path)
-            } else {
-                selectedPaths.insert(entry.path)
-            }
-        } else if ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension) {
-            openImage(entry)
-        }
-    } label: {
-        HStack(spacing: 12) {
-
-            Image(systemName: entry.icon)
-                .font(.system(size: 22))
-                .foregroundStyle(
-                    entry.isDirectory ? .cyan : .white.opacity(0.8)
-                )
-                .frame(width: 30)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.name)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-
-                Text(entry.sizeDescription)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-
-            Spacer()
-
-            if entry.isDirectory {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.35))
-            } else if isSelectionMode {
-                Image(
-                    systemName: selectedPaths.contains(entry.path)
-                    ? "checkmark.circle.fill"
-                    : "circle"
-                )
-                .font(.title3)
-                .foregroundStyle(
-                    selectedPaths.contains(entry.path)
-                    ? .cyan
-                    : .white.opacity(0.35)
-                )
-            }
-        }
-        .padding(.vertical, 9)
-        .contentShape(Rectangle())
+private func isInsideSelectedFolder(_ path: String) -> Bool {
+    selectedPaths.contains { selectedPath in
+        path.hasPrefix(selectedPath + "/")
     }
-    .buttonStyle(.plain)
-    .disabled(
-        !isSelectionMode &&
-        !entry.isDirectory &&
-        !["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"].contains(entry.fileExtension)
-    )
+}
+private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
+
+    let isCovered = isInsideSelectedFolder(entry.path)
+    let isSelected = selectedPaths.contains(entry.path) || isCovered
+
+    let previewableFormats = [
+        "jpg", "jpeg", "png", "gif",
+        "heic", "webp", "pdf", "txt"
+    ]
+
+    let isPreviewable = previewableFormats.contains(entry.fileExtension)
+
+    return HStack(spacing: 12) {
+
+        Button {
+            if entry.isDirectory {
+                openDirectory(entry)
+
+            } else if isSelectionMode {
+                guard !isCovered else { return }
+
+                if selectedPaths.contains(entry.path) {
+                    selectedPaths.remove(entry.path)
+                } else {
+                    selectedPaths.insert(entry.path)
+                }
+
+            } else if isPreviewable {
+                openImage(entry)
+            }
+
+        } label: {
+
+            HStack(spacing: 12) {
+
+                Image(systemName: entry.icon)
+                    .font(.system(size: 22))
+                    .foregroundStyle(
+                        entry.isDirectory ? .cyan : .white.opacity(0.8)
+                    )
+                    .frame(width: 30)
+
+                VStack(alignment: .leading, spacing: 4) {
+
+                    Text(entry.name)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    Text(entry.sizeDescription)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+
+                Spacer()
+
+                if entry.isDirectory {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.35))
+
+                } else if isSelectionMode {
+
+                    Image(
+                        systemName: isSelected
+                            ? "checkmark.circle.fill"
+                            : "circle"
+                    )
+                    .font(.title3)
+                    .foregroundStyle(
+                        isCovered
+                            ? .cyan.opacity(0.4)
+                            : isSelected
+                                ? .cyan
+                                : .white.opacity(0.35)
+                    )
+
+                    if isCovered {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                }
+            }
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            !entry.isDirectory &&
+            (
+                isSelectionMode
+                    ? isCovered
+                    : !isPreviewable
+            )
+        )
+
+        // Отдельная галочка для выбора целой папки
+        if entry.isDirectory && isSelectionMode {
+
+            Button {
+                if selectedPaths.contains(entry.path) {
+                    selectedPaths.remove(entry.path)
+                } else if !isCovered {
+                    selectedPaths.insert(entry.path)
+                }
+
+            } label: {
+
+                HStack(spacing: 5) {
+
+                    Image(
+                        systemName: isSelected
+                            ? "checkmark.circle.fill"
+                            : "circle"
+                    )
+                    .font(.title3)
+                    .foregroundStyle(
+                        isCovered
+                            ? .cyan.opacity(0.4)
+                            : isSelected
+                                ? .cyan
+                                : .white.opacity(0.35)
+                    )
+
+                    if isCovered {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                }
+                .frame(minWidth: 30, minHeight: 40)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isCovered)
+        }
+    }
+    .padding(.vertical, 2)
 }
 
     // MARK: - Image preview
