@@ -319,80 +319,85 @@ var body: some View {
 
                 Spacer()
 
-                if archiveURL != nil && !isRARArchive {
+                
+                if archiveURL != nil {
 
-                    if isSelectionMode {
+                    if !isRARArchive {
 
-                        if !isSearching {
+                        if isSelectionMode {
+
+                            if !isSearching {
+                                Button {
+                                    let pathsToSelect = displayedEntries
+                                        .filter { !isInsideSelectedFolder($0.path) }
+                                        .map { $0.path }
+
+                                    selectedPaths.formUnion(pathsToSelect)
+                                } label: {
+                                    Text(tr("Выбрать всё", "Select all"))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.white.opacity(0.7))
+                                        .multilineTextAlignment(.center)
+                                        .frame(width: 70, height: 36, alignment: .center)
+                                }
+                                .buttonStyle(.plain)
+                            }
+
                             Button {
-                                let pathsToSelect = displayedEntries
-                                    .filter { !isInsideSelectedFolder($0.path) }
-                                    .map { $0.path }
-
-                                selectedPaths.formUnion(pathsToSelect)
+                                selectedPaths.subtract(
+                                    displayedEntries.map { $0.path }
+                                )
                             } label: {
-                                Text(tr("Выбрать всё", "Select all"))
+                                Text(tr("Снять всё", "Clear all"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.white.opacity(0.7))
                                     .multilineTextAlignment(.center)
-                                    .frame(width: 70, height: 36, alignment: .center)
+                                    .frame(width: 68, height: 36, alignment: .center)
                             }
                             .buttonStyle(.plain)
-                        }
 
-                        Button {
-                            selectedPaths.subtract(
-                                displayedEntries.map { $0.path }
+                            Button {
+                                isSelectionMode = false
+                                isSelectionConfirmed = true
+                            } label: {
+                                Text(tr("Готово", "Done"))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.cyan)
+                                    .multilineTextAlignment(.center)
+                                    .frame(width: 48, height: 36, alignment: .center)
+                            }
+                            .buttonStyle(.plain)
+
+                        } else {
+
+                            Button {
+                                isSelectionConfirmed = false
+                                isSelectionMode = true
+                            } label: {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.title2)
+                                    .foregroundStyle(.cyan)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                tr("Выбрать файлы", "Select files")
                             )
-                        } label: {
-                            Text(tr("Снять всё", "Clear all"))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .multilineTextAlignment(.center)
-                                .frame(width: 68, height: 36, alignment: .center)
                         }
-                        .buttonStyle(.plain)
 
                         Button {
-                            isSelectionMode = false
-                            isSelectionConfirmed = true
+                            showArchiveInfo()
                         } label: {
-                            Text(tr("Готово", "Done"))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.cyan)
-                                .multilineTextAlignment(.center)
-                                .frame(width: 48, height: 36, alignment: .center)
-                        }
-                        .buttonStyle(.plain)
-
-                    } else {
-
-                        Button {
-                            isSelectionConfirmed = false
-                            isSelectionMode = true
-                        } label: {
-                            Image(systemName: "checkmark.circle")
+                            Image(systemName: "info.circle")
                                 .font(.title2)
                                 .foregroundStyle(.cyan)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(
-                            tr("Выбрать файлы", "Select files")
+                            tr("Информация об архиве", "Archive information")
                         )
                     }
 
-                    Button {
-                        showArchiveInfo()
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .font(.title2)
-                            .foregroundStyle(.cyan)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        tr("Информация об архиве", "Archive information")
-                    )
-
+                    // Кнопка закрытия доступна для ZIP и RAR
                     Button {
                         closeArchive()
                     } label: {
@@ -402,6 +407,7 @@ var body: some View {
                     }
                     .buttonStyle(.plain)
                 }
+
             }
             if archiveURL != nil {
                 HStack(spacing: 10) {
