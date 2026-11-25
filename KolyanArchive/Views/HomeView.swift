@@ -22,8 +22,7 @@ struct HomeView: View {
 
     @State private var isNamingExtractionFolder = false
     @State private var extractionFolderName = ""
-    @State private var extractionFolderNameSelection: TextSelection?
-    @FocusState private var isExtractionNameFocused: Bool
+    @State private var extractionNameFocusRequest = UUID()
     @State private var pendingExtractionIsSelection = false
     @State private var shouldChooseDestinationAfterNaming = false
 
@@ -230,9 +229,9 @@ var body: some View {
         Button {
             isExtractingSelection = false
             pendingExtractionIsSelection = false
+
             extractionFolderName = archiveFolderDefaultName
-            extractionFolderNameSelection = nil
-            isExtractionNameFocused = false
+            extractionNameFocusRequest = UUID()
             isNamingExtractionFolder = true
         } label: {
             Label(
@@ -254,12 +253,9 @@ var body: some View {
         Button {
             isExtractingSelection = true
             pendingExtractionIsSelection = true
+
             extractionFolderName = archiveFolderDefaultName
-
-            extractionFolderNameSelection = TextSelection(
-                range: archiveFolderDefaultName.startIndex..<archiveFolderDefaultName.endIndex
-            )
-
+            extractionNameFocusRequest = UUID()
             isNamingExtractionFolder = true
         } label: {
             Label(
@@ -1009,30 +1005,17 @@ private var extractionNameSheet: some View {
             .font(.subheadline)
             .foregroundStyle(.white.opacity(0.6))
 
-            TextField(
-                tr("Название папки", "Folder name"),
+            ExtractionNameTextField(
                 text: $extractionFolderName,
-                selection: $extractionFolderNameSelection
+                placeholder: tr("Название папки", "Folder name"),
+                focusRequest: extractionNameFocusRequest
             )
-            .focused($isExtractionNameFocused)
-            .font(.system(size: 16, weight: .medium))
-            .foregroundStyle(.white)
+            .frame(height: 22)
             .padding(15)
             .background(
                 Color.white.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: 13)
             )
-            .onAppear {
-                DispatchQueue.main.async {
-                    isExtractionNameFocused = true
-
-                    DispatchQueue.main.async {
-                        extractionFolderNameSelection = TextSelection(
-                            range: extractionFolderName.startIndex..<extractionFolderName.endIndex
-                        )
-                    }
-                }
-            }
 
             HStack(spacing: 12) {
                 Button {
@@ -1075,9 +1058,6 @@ private var extractionNameSheet: some View {
                         )
                 }
             }
-        }
-        .onDisappear {
-            isExtractionNameFocused = false
         }
         .padding(24)
     }
@@ -1855,3 +1835,86 @@ private struct ArchiveInfoView: View {
     }
 }
 
+struct ExtractionNameTextField: UIViewRepresentable {
+
+    @Binding var text: String
+
+    let placeholder: String
+    let focusRequest: UUID
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField()
+
+        textField.delegate = context.coordinator
+        textField.text = text
+        textField.borderStyle = .none
+        textField.backgroundColor = .clear
+        textField.textColor = .white
+        textField.tintColor = .white
+        textField.font = .system(
+            size: 16,
+            weight: .medium
+        )
+
+        textField.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [
+                .foregroundColor: UIColor.white.withAlphaComponent(0.45)
+            ]
+        )
+
+        textField.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textChanged(_:)),
+            for: .editingChanged
+        )
+
+        return textField
+    }
+
+    func updateUIView(
+        _ textField: UITextField,
+        context: Context
+    ) {
+        if textField.text != text {
+            textField.text = text
+        }
+
+        if context.coordinator.lastFocusRequest != focusRequest {
+            context.coordinator.lastFocusRequest = focusRequest
+
+            DispatchQueue.main.async {
+                textField.becomeFirstResponder()
+
+                DispatchQueue.main.async {
+                    guard let range = textField.textRange(
+                        from: textField.beginningOfDocument,
+                        to: textField.endOfDocument
+                    ) else {
+                        return
+                    }
+
+                    textField.selectedTextRange = range
+                }
+            }
+        }
+    }
+
+    class Coordinator: NSObject, UITextFieldDelegate {
+
+        var parent: ExtractionNameTextField
+        var lastFocusRequest: UUID?
+
+        init(_ parent: ExtractionNameTextField) {
+            self.parent = parent
+        }
+
+        @objc func textChanged(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+    }
+}
