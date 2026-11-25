@@ -1015,13 +1015,7 @@ private var extractionNameSheet: some View {
                 Color.white.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: 13)
             )
-            .onChange(of: isNamingExtractionFolder) { _, isPresented in
-                guard isPresented else { return }
-
-                extractionFolderNameSelection = TextSelection(
-                    range: extractionFolderName.startIndex..<extractionFolderName.endIndex
-                )
-            }
+            
             .onAppear {
                 DispatchQueue.main.async {
                     extractionFolderNameSelection = TextSelection(
