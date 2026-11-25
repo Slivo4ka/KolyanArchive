@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var isImporterPresented = false
     @State private var isChoosingDestination = false
     @State private var isSelectionMode = false
+    @State private var isSelectionConfirmed = false
     @State private var selectedPaths: Set<String> = []
     @State private var isExtractingSelection = false
     @State private var archiveInfo: ArchiveInfo?
@@ -66,7 +67,7 @@ var body: some View {
                     if archiveURL != nil {
                         extractArchiveButton
 
-                        if !selectedPaths.isEmpty {
+                        if isSelectionConfirmed && !selectedPaths.isEmpty {
                             selectedExtractButton
                         }
                     }
@@ -338,6 +339,7 @@ var body: some View {
 
                         Button {
                             isSelectionMode = false
+                            isSelectionConfirmed = true
                         } label: {
                             Text(tr("Готово", "Done"))
                                 .font(.caption.weight(.semibold))
@@ -348,6 +350,7 @@ var body: some View {
                     } else {
 
                         Button {
+                            isSelectionConfirmed = false
                             isSelectionMode = true
                         } label: {
                             Image(systemName: "checkmark.circle")
@@ -1030,6 +1033,7 @@ private func beginExtraction(
 
         if isSelection {
             selectedPaths.removeAll()
+            isSelectionConfirmed = false
             isSelectionMode = false
 
             message = tr(
