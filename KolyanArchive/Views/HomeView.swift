@@ -312,10 +312,17 @@ var body: some View {
                     }
 
                     if isSelectionMode {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.cyan)
-                            .frame(width: 32, height: 36)
+                        HStack(spacing: 9) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.cyan)
+
+                            Text(tr("Выбор файлов", "Select files"))
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
                     } else {
                         Text(archiveName)
                             .font(.headline)
@@ -387,6 +394,7 @@ var body: some View {
                             }
                             .buttonStyle(.plain)
                             .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
                             .background(
                                 Color.white.opacity(0.035),
                                 in: RoundedRectangle(cornerRadius: 9)
@@ -408,6 +416,7 @@ var body: some View {
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
                         .background(
                             Color.white.opacity(0.035),
                             in: RoundedRectangle(cornerRadius: 9)
@@ -427,6 +436,7 @@ var body: some View {
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
                         .background(
                             Color.white.opacity(0.035),
                             in: RoundedRectangle(cornerRadius: 9)
