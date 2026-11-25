@@ -712,10 +712,16 @@ private func openImage(_ entry: ArchiveEntry) {
                 withIntermediateDirectories: true
             )
 
-            let copiedURL = storageDirectory
-                .appendingPathComponent(
-                    UUID().uuidString + "-" + sourceURL.lastPathComponent
-                )
+            let uniqueStorageDirectory = storageDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+            try fileManager.createDirectory(
+                at: uniqueStorageDirectory,
+                withIntermediateDirectories: true
+            )
+
+            let copiedURL = uniqueStorageDirectory
+                .appendingPathComponent(sourceURL.lastPathComponent)
 
             try fileManager.copyItem(
                 at: sourceURL,
