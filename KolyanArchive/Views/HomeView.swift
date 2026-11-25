@@ -66,7 +66,7 @@ var body: some View {
                     if archiveURL != nil {
                         extractArchiveButton
 
-                        if isSelectionMode && !selectedPaths.isEmpty {
+                        if !selectedPaths.isEmpty {
                             selectedExtractButton
                         }
                     }
@@ -313,10 +313,7 @@ var body: some View {
                         if !isSearching {
                             Button {
                                 let pathsToSelect = displayedEntries
-                                    .filter {
-                                        !$0.isDirectory &&
-                                        !isInsideSelectedFolder($0.path)
-                                    }
+                                    .filter { !isInsideSelectedFolder($0.path) }
                                     .map { $0.path }
 
                                 selectedPaths.formUnion(pathsToSelect)
@@ -329,7 +326,9 @@ var body: some View {
                         }
 
                         Button {
-                            selectedPaths.removeAll()
+                            selectedPaths.subtract(
+                                displayedEntries.map { $0.path }
+                            )
                         } label: {
                             Text(tr("Снять всё", "Clear all"))
                                 .font(.caption.weight(.semibold))
