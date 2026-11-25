@@ -1016,7 +1016,7 @@ private var extractionNameSheet: some View {
                 in: RoundedRectangle(cornerRadius: 13)
             )
             .onAppear {
-                extractionFolderNameSelection = .selection(
+                extractionFolderNameSelection = TextSelection(
                     range: extractionFolderName.startIndex..<extractionFolderName.endIndex
                 )
             }
