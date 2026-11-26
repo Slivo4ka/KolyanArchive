@@ -21,8 +21,21 @@ struct HomeView: View {
     @State private var archiveInfo: ArchiveInfo?
 
     @AppStorage("isEnglish") private var isEnglish = false
+    init() {
+        let english = UserDefaults.standard.bool(forKey: "isEnglish")
 
-    @State private var archiveName = "Архив не выбран"
+        _archiveName = State(
+            initialValue: english ? "No archive selected" : "Архив не выбран"
+        )
+
+        _message = State(
+            initialValue: english
+                ? "Choose a ZIP archive using the button above."
+                : "Выбери ZIP-архив через кнопку выше."
+        )
+    }
+
+    @State private var archiveName = ""
     @State private var archiveURL: URL?
 
     @State private var isNamingExtractionFolder = false
@@ -37,7 +50,7 @@ struct HomeView: View {
     @State private var searchResults: [ArchiveEntry] = []
     @State private var activeGallery: GalleryPresentation?
 
-    @State private var message = "Выбери ZIP-архив через кнопку выше."
+    @State private var message = ""
 
     @State private var errorMessage = ""
     @State private var showingError = false
@@ -1854,6 +1867,7 @@ private struct ArchiveImagePage: View {
         let currentArchiveURL = archiveURL
         let currentPath = item.path
         let currentExtension = item.fileExtension
+        let english = isEnglish
 
         do {
             let imageData = try await Task.detached(
@@ -1899,7 +1913,7 @@ private struct ArchiveImagePage: View {
                             domain: "KolyanArchive",
                             code: 1,
                             userInfo: [
-                                NSLocalizedDescriptionKey: isEnglish
+                                NSLocalizedDescriptionKey: english
     ? "File not found in archive"
     : "Файл не найден в архиве"
                             ]
