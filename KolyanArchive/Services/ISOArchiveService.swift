@@ -168,37 +168,15 @@ struct ISOArchiveService {
 
         try validateArchive(archiveURL)
 
-        let entries = try reader.entries(at: archiveURL)
-
-        for entry in entries {
-            let path = try normalizedPath(entry.path)
-
-            if entry.symlinkTarget != nil ||
-                entry.hardlinkTarget != nil {
-                throw ArchiveServiceError.symbolicLinkNotAllowed
-            }
-
-            let type = String(describing: entry.fileType).lowercased()
-
-            let isDirectory = type.contains("directory")
-            let isRegularFile = type.contains("regular")
-
-            guard isDirectory || isRegularFile else {
-                throw ArchiveServiceError.unsafeArchivePath(path)
-            }
-        }
-
         let outputFolder = try createUniqueArchiveFolder(
             folderName: folderName,
             inside: destinationURL
         )
 
         do {
-            try reader.extract(
-                archiveURL,
-                to: outputFolder,
-                options: [.safeWrites, .noOverwrite],
-                permissionMode: .normalized
+            try extractEntriesSafely(
+                from: archiveURL,
+                to: outputFolder
             )
 
             return outputFolder
@@ -228,6 +206,9 @@ struct ISOArchiveService {
 
         for entry in entries {
             let path = try normalizedPath(entry.path)
+            if path.isEmpty {
+                continue
+            }
 
             if entry.symlinkTarget != nil ||
                 entry.hardlinkTarget != nil {
@@ -248,8 +229,9 @@ struct ISOArchiveService {
             selectedPaths.map { try normalizedPath($0) }
         )
 
-        let archivePaths = try entries.map {
-            try normalizedPath($0.path)
+        let archivePaths = try entries.compactMap { entry -> String? in
+            let path = try normalizedPath(entry.path)
+            return path.isEmpty ? nil : path
         }
 
         var selectedFolders = Set<String>()
@@ -325,11 +307,9 @@ struct ISOArchiveService {
                 try? FileManager.default.removeItem(at: temporaryFolder)
             }
 
-            try reader.extract(
-                archiveURL,
-                to: temporaryFolder,
-                options: [.safeWrites, .noOverwrite],
-                permissionMode: .normalized
+            try extractEntriesSafely(
+                from: archiveURL,
+                to: temporaryFolder
             )
 
             var extractedPaths = Set<String>()
@@ -420,9 +400,16 @@ struct ISOArchiveService {
             }
         }
 
-        guard let matchingEntry = entries.first(where: {
-            (try? normalizedPath($0.path)) == normalizedPreviewPath &&
-            $0.fileType == .regular
+        guard let matchingEntry = entries.first(where: { entry in
+            guard let entryPath = try? normalizedPath(entry.path),
+                  !entryPath.isEmpty else {
+                return false
+            }
+
+            let type = String(describing: entry.fileType).lowercased()
+
+            return entryPath == normalizedPreviewPath &&
+                   type.contains("regular")
         }) else {
             throw ArchiveServiceError.noSelectedEntries
         }
@@ -451,6 +438,75 @@ struct ISOArchiveService {
         }
     }
 
+    
+    // MARK: - Safe ISO extraction
+
+    private func extractEntriesSafely(
+        from archiveURL: URL,
+        to destinationURL: URL
+    ) throws {
+
+        let entries = try reader.entries(at: archiveURL)
+
+        for entry in entries {
+
+            if entry.symlinkTarget != nil ||
+                entry.hardlinkTarget != nil {
+                throw ArchiveServiceError.symbolicLinkNotAllowed
+            }
+
+            let path = try normalizedPath(entry.path)
+
+            // Skip ISO root directory entries: "." and "./"
+            guard !path.isEmpty else {
+                continue
+            }
+
+            let type = String(describing: entry.fileType).lowercased()
+
+            let isDirectory = type.contains("directory")
+            let isRegularFile = type.contains("regular")
+
+            guard isDirectory || isRegularFile else {
+                throw ArchiveServiceError.unsafeArchivePath(path)
+            }
+
+            let targetURL = try safeTargetURL(
+                path,
+                inside: destinationURL
+            )
+
+            if isDirectory {
+                try FileManager.default.createDirectory(
+                    at: targetURL,
+                    withIntermediateDirectories: true
+                )
+            } else {
+                try FileManager.default.createDirectory(
+                    at: targetURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+
+                guard !FileManager.default.fileExists(
+                    atPath: targetURL.path
+                ) else {
+                    throw ArchiveServiceError.destinationFileExists(path)
+                }
+
+                let data = try reader.data(
+                    forEntryPath: entry.path,
+                    in: archiveURL
+                )
+
+                try data.write(
+                    to: targetURL,
+                    options: .atomic
+                )
+            }
+        }
+    }
+
+    
     // MARK: - Validation
 
     private func validateArchive(_ url: URL) throws {
@@ -463,7 +519,7 @@ struct ISOArchiveService {
             throw ArchiveServiceError.archiveNotFound
         }
     }
-
+    
     private func normalizedPath(
         _ rawPath: String
     ) throws -> String {
@@ -477,8 +533,19 @@ struct ISOArchiveService {
 
         var path = rawPath
 
+        // Remove harmless leading "./" components.
+        while path.hasPrefix("./") {
+            path.removeFirst(2)
+        }
+
+        // Remove trailing slashes.
         while path.hasSuffix("/") {
             path.removeLast()
+        }
+
+        // ISO root directory.
+        if path.isEmpty || path == "." {
+            return ""
         }
 
         let components = path.split(
@@ -486,12 +553,11 @@ struct ISOArchiveService {
             omittingEmptySubsequences: false
         )
 
-        guard !path.isEmpty,
-              components.allSatisfy({
-                  !$0.isEmpty && $0 != "." && $0 != ".."
-              }),
-              let first = components.first,
-              !first.contains(":") else {
+        guard components.allSatisfy({
+            !$0.isEmpty && $0 != "." && $0 != ".."
+        }),
+        let first = components.first,
+        !first.contains(":") else {
             throw ArchiveServiceError.unsafeArchivePath(rawPath)
         }
 
