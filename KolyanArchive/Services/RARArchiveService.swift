@@ -398,7 +398,7 @@ struct RARArchiveService {
         let normalizedPreviewPath = try normalizedPath(path)
         let entries = try reader.entries(at: archiveURL)
 
-        // Проверяем безопасность всех элементов архива
+        // Проверяем безопасность элементов архива
         for entry in entries {
 
             let entryPath = try normalizedPath(entry.path)
@@ -418,65 +418,33 @@ struct RARArchiveService {
             }
         }
 
-        // Ищем нужный файл
-        guard entries.contains(where: {
+        // Находим нужный файл
+        guard let matchingEntry = entries.first(where: {
             (try? normalizedPath($0.path)) == normalizedPreviewPath &&
-            String(describing: $0.fileType)
-                .lowercased()
-                .contains("regular")
+            $0.fileType == .regular
         }) else {
             throw ArchiveServiceError.noSelectedEntries
         }
 
-        let fileManager = FileManager.default
-
-        let temporaryFolder = fileManager.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-
-        let previewURL = fileManager.temporaryDirectory
+        let previewURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(
                 URL(fileURLWithPath: normalizedPreviewPath).pathExtension
             )
 
         do {
-            try fileManager.createDirectory(
-                at: temporaryFolder,
-                withIntermediateDirectories: true
+            // Читаем непосредственно содержимое выбранного файла
+            let data = try reader.data(
+                forEntryPath: matchingEntry.path,
+                in: archiveURL
             )
 
-            defer {
-                try? fileManager.removeItem(at: temporaryFolder)
-            }
-
-            // Безопасно извлекаем содержимое во временную папку
-            try reader.extract(
-                archiveURL,
-                to: temporaryFolder,
-                options: [.safeWrites, .noOverwrite],
-                permissionMode: .normalized
-            )
-
-            let sourceURL = temporaryFolder
-                .appendingPathComponent(normalizedPreviewPath)
-                .standardizedFileURL
-
-            let rootPath = temporaryFolder.path + "/"
-
-            guard sourceURL.path.hasPrefix(rootPath),
-                  fileManager.fileExists(atPath: sourceURL.path) else {
-                throw ArchiveServiceError.noSelectedEntries
-            }
-
-            try fileManager.copyItem(
-                at: sourceURL,
-                to: previewURL
-            )
+            try data.write(to: previewURL, options: .atomic)
 
             return previewURL
 
         } catch {
-            try? fileManager.removeItem(at: previewURL)
+            try? FileManager.default.removeItem(at: previewURL)
             throw error
         }
     }
