@@ -86,7 +86,9 @@ var body: some View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     header
-                    openArchiveButtons
+                    if archiveURL == nil {
+                        openArchiveButtons
+                    }
 
                     if archiveURL != nil {
                         extractArchiveButton
@@ -105,6 +107,7 @@ var body: some View {
                         .frame(maxWidth: .infinity)
                 }
                 .padding(20)
+                .animation(.easeInOut(duration: 0.25), value: archiveURL)
             }
         }
         .toolbar(.hidden, for: .navigationBar)
