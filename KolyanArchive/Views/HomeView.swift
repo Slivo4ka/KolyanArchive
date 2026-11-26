@@ -1544,8 +1544,8 @@ struct ImageGalleryView: View {
                     } else {
                         ArchiveImagePage(
     archiveURL: archiveURL,
-    item: items[selectedIndex],
     isEnglish: isEnglish,
+    item: items[selectedIndex],
     isZoomed: $isZoomed
 )
                     }
