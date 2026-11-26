@@ -467,7 +467,7 @@ struct ZIPArchiveService {
     func createZIP(
         from sourceURLs: [URL],
         at destinationURL: URL
-    ) throws {
+    ) throws -> URL {
 
         let fileManager = FileManager.default
 
@@ -548,6 +548,8 @@ struct ZIPArchiveService {
             shouldKeepParent: false,
             compressionMethod: .deflate
         )
+
+        return finalDestinationURL
     }
 
     // MARK: - Validation

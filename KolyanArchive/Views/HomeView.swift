@@ -1853,6 +1853,8 @@ private func closeArchive() {
     searchText = ""
     searchResults = []
 
+    archiveNavigationStack.removeAll()
+
     isSelectionMode = false
     selectedPaths.removeAll()
     isExtractingSelection = false
@@ -1904,17 +1906,19 @@ private func createZIPArchive(at destinationFolderURL: URL) {
         .appendingPathComponent(fileName)
 
     do {
-        try archiveService.createZIP(
+        let createdArchiveURL = try archiveService.createZIP(
             from: selectedZIPFiles,
             at: outputURL
         )
+
+        let actualFileName = createdArchiveURL.lastPathComponent
 
         selectedZIPFiles = []
         zipArchiveName = ""
 
         message = tr(
-            "ZIP-архив успешно создан: \(fileName)",
-            "ZIP archive successfully created: \(fileName)"
+            "ZIP-архив успешно создан: \(actualFileName)",
+            "ZIP archive successfully created: \(actualFileName)"
         )
 
     } catch {
