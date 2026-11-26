@@ -4,6 +4,7 @@ import ZIPFoundation
 
 enum ArchiveServiceError: LocalizedError {
     case onlyZIPSupported
+    case onlyISOSupported
     case archiveNotFound
     case unsafeArchivePath(String)
     case symbolicLinkNotAllowed
@@ -21,6 +22,10 @@ enum ArchiveServiceError: LocalizedError {
             return isEnglish
                 ? "Only ZIP archives are supported."
                 : "На этом этапе поддерживаются только ZIP-архивы."
+         case .onlyISOSupported:
+            return isEnglish
+                ? "Only ISO images are supported."
+                : "Поддерживаются только ISO-образы."
         case .archiveNotFound:
             return isEnglish
                 ? "Archive not found."
