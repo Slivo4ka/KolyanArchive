@@ -2540,6 +2540,7 @@ private struct ArchiveHTMLView: UIViewRepresentable {
                     data = try Data(contentsOf: temporaryURL)
                 }
 
+                
                 let html =
                     String(data: data, encoding: .utf8)
                     ?? String(data: data, encoding: .utf16)
@@ -2552,8 +2553,60 @@ private struct ArchiveHTMLView: UIViewRepresentable {
                     )
                 }
 
+                let darkTheme = """
+                <style>
+                html, body {
+                    background-color: #090b13 !important;
+                    color: #f1f3f8 !important;
+                }
+
+                body, body *:not(svg):not(svg *) {
+                    color: #f1f3f8 !important;
+                }
+
+                a, a * {
+                    color: #42dce8 !important;
+                }
+
+                input, textarea, select {
+                    background-color: #171d2d !important;
+                    color: #f1f3f8 !important;
+                }
+
+                table, th, td {
+                    border-color: #343b50;
+                }
+                </style>
+                """
+
+                let styledHTML: String
+
+                if let headRange = html.range(
+                    of: "</head>",
+                    options: .caseInsensitive
+                ) {
+                    var modifiedHTML = html
+                    modifiedHTML.insert(
+                        contentsOf: darkTheme,
+                        at: headRange.lowerBound
+                    )
+                    styledHTML = modifiedHTML
+                } else {
+                    styledHTML = """
+                    <html>
+                    <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    \(darkTheme)
+                    </head>
+                    <body>
+                    \(html)
+                    </body>
+                    </html>
+                    """
+                }
+
                 DispatchQueue.main.async {
-                    webView.loadHTMLString(html, baseURL: nil)
+                    webView.loadHTMLString(styledHTML, baseURL: nil)
                 }
 
             } catch {
