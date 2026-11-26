@@ -1473,9 +1473,6 @@ struct ImageGalleryView: View {
     }
 }
 
-
-
-
 private struct ArchiveImagePage: View {
 
     let archiveURL: URL
@@ -1688,31 +1685,49 @@ private struct ArchiveImagePage: View {
 
     private func loadImage() {
         do {
-            let archive = try Archive(
-                url: archiveURL,
-                accessMode: .read
-            )
+            let imageData: Data
 
-            guard let archiveEntry = archive.first(where: {
-                $0.path == item.path
-            }), archiveEntry.type == .file else {
-                return
+            if archiveURL.pathExtension.lowercased() == "rar" {
+
+                let previewURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: previewURL)
+                }
+
+                imageData = try Data(contentsOf: previewURL)
+
+            } else {
+
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                guard let archiveEntry = archive.first(where: {
+                    $0.path == item.path
+                }), archiveEntry.type == .file else {
+                    return
+                }
+
+                let previewURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(item.fileExtension)
+
+                defer {
+                    try? FileManager.default.removeItem(at: previewURL)
+                }
+
+                try archive.extract(
+                    archiveEntry,
+                    to: previewURL
+                )
+
+                imageData = try Data(contentsOf: previewURL)
             }
-
-            let previewURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(item.fileExtension)
-
-            try archive.extract(
-                archiveEntry,
-                to: previewURL
-            )
-
-            defer {
-                try? FileManager.default.removeItem(at: previewURL)
-            }
-
-            let imageData = try Data(contentsOf: previewURL)
 
             guard let loadedImage = UIImage(data: imageData) else {
                 return
