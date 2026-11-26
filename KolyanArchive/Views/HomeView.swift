@@ -1480,6 +1480,7 @@ private struct ArchiveImagePage: View {
     @Binding var isZoomed: Bool
 
     @State private var image: UIImage?
+    @State private var loadingError: String?
 
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
@@ -1621,6 +1622,22 @@ private struct ArchiveImagePage: View {
                             }
                         }
 
+                } else if let loadingError {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.orange)
+
+                        Text("Не удалось открыть изображение")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+
+                        Text(loadingError)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.65))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
                 } else {
                     ProgressView()
                         .tint(.white)
@@ -1634,11 +1651,13 @@ private struct ArchiveImagePage: View {
         }
         .task(id: item.id) {
             image = nil
+            loadingError = nil
             scale = 1
             lastScale = 1
             offset = .zero
             lastOffset = .zero
-            loadImage()
+
+            await loadImage()
         }
     }
 
@@ -1683,59 +1702,73 @@ private struct ArchiveImagePage: View {
         )
     }
 
-    private func loadImage() {
+    private func loadImage() async {
+        let currentArchiveURL = archiveURL
+        let currentPath = item.path
+        let currentExtension = item.fileExtension
+
         do {
-            let imageData: Data
+            let imageData = try await Task.detached(
+                priority: .userInitiated
+            ) {
+                if currentArchiveURL.pathExtension.lowercased() == "rar" {
 
-            if archiveURL.pathExtension.lowercased() == "rar" {
+                    let previewURL = try RARArchiveService().extractPreviewFile(
+                        archiveURL: currentArchiveURL,
+                        path: currentPath
+                    )
 
-                let previewURL = try RARArchiveService().extractPreviewFile(
-                    archiveURL: archiveURL,
-                    path: item.path
-                )
+                    defer {
+                        try? FileManager.default.removeItem(at: previewURL)
+                    }
 
-                defer {
-                    try? FileManager.default.removeItem(at: previewURL)
+                    return try Data(contentsOf: previewURL)
+
+                } else {
+
+                    let archive = try Archive(
+                        url: currentArchiveURL,
+                        accessMode: .read
+                    )
+
+                    guard let archiveEntry = archive.first(where: {
+                        $0.path == currentPath
+                    }), archiveEntry.type == .file else {
+                        throw NSError(
+                            domain: "KolyanArchive",
+                            code: 1,
+                            userInfo: [
+                                NSLocalizedDescriptionKey: "Файл не найден в архиве"
+                            ]
+                        )
+                    }
+
+                    let previewURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                        .appendingPathExtension(currentExtension)
+
+                    defer {
+                        try? FileManager.default.removeItem(at: previewURL)
+                    }
+
+                    try archive.extract(
+                        archiveEntry,
+                        to: previewURL
+                    )
+
+                    return try Data(contentsOf: previewURL)
                 }
-
-                imageData = try Data(contentsOf: previewURL)
-
-            } else {
-
-                let archive = try Archive(
-                    url: archiveURL,
-                    accessMode: .read
-                )
-
-                guard let archiveEntry = archive.first(where: {
-                    $0.path == item.path
-                }), archiveEntry.type == .file else {
-                    return
-                }
-
-                let previewURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension(item.fileExtension)
-
-                defer {
-                    try? FileManager.default.removeItem(at: previewURL)
-                }
-
-                try archive.extract(
-                    archiveEntry,
-                    to: previewURL
-                )
-
-                imageData = try Data(contentsOf: previewURL)
-            }
+            }.value
 
             guard let loadedImage = UIImage(data: imageData) else {
+                loadingError = "Файл извлечён, но iOS не смогла распознать изображение."
                 return
             }
 
             image = loadedImage
 
         } catch {
+            loadingError = error.localizedDescription
             print("Image loading error: \(error)")
         }
     }
