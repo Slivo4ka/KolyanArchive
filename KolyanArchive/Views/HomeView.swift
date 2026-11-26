@@ -634,6 +634,9 @@ var body: some View {
                         } label: {
                             HStack {
                                 Text(tr("Имя: А–Я", "Name: A–Z"))
+                                .foregroundStyle(
+                                    sortOption == .nameAscending ? Color.cyan : Color.primary
+                                )
 
                                 Spacer()
 
@@ -649,6 +652,9 @@ var body: some View {
                         } label: {
                             HStack {
                                 Text(tr("Имя: Я–А", "Name: Z–A"))
+                                .foregroundStyle(
+                                    sortOption == .nameAscending ? Color.cyan : Color.primary
+                                )
 
                                 Spacer()
 
@@ -664,6 +670,9 @@ var body: some View {
                         } label: {
                             HStack {
                                 Text(tr("Размер: сначала большие", "Size: largest first"))
+                                .foregroundStyle(
+                                    sortOption == .nameAscending ? Color.cyan : Color.primary
+                                )
 
                                 Spacer()
 
@@ -679,6 +688,9 @@ var body: some View {
                         } label: {
                             HStack {
                                 Text(tr("Размер: сначала маленькие", "Size: smallest first"))
+                                .foregroundStyle(
+                                    sortOption == .nameAscending ? Color.cyan : Color.primary
+                                )
 
                                 Spacer()
 
