@@ -1,3 +1,5 @@
+import SwiftUI
+
 struct SplashRootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
