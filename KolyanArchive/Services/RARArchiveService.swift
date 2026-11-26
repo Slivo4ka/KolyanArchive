@@ -386,6 +386,102 @@ struct RARArchiveService {
         }
     }
 
+    // MARK: - Extract single file for preview
+
+    func extractPreviewFile(
+        archiveURL: URL,
+        path: String
+    ) throws -> URL {
+
+        try validateArchive(archiveURL)
+
+        let normalizedPreviewPath = try normalizedPath(path)
+        let entries = try reader.entries(at: archiveURL)
+
+        // Проверяем безопасность всех элементов архива
+        for entry in entries {
+
+            let entryPath = try normalizedPath(entry.path)
+
+            if entry.symlinkTarget != nil ||
+                entry.hardlinkTarget != nil {
+                throw ArchiveServiceError.symbolicLinkNotAllowed
+            }
+
+            let type = String(describing: entry.fileType).lowercased()
+
+            let isDirectory = type.contains("directory")
+            let isRegularFile = type.contains("regular")
+
+            guard isDirectory || isRegularFile else {
+                throw ArchiveServiceError.unsafeArchivePath(entryPath)
+            }
+        }
+
+        // Ищем нужный файл
+        guard entries.contains(where: {
+            (try? normalizedPath($0.path)) == normalizedPreviewPath &&
+            String(describing: $0.fileType)
+                .lowercased()
+                .contains("regular")
+        }) else {
+            throw ArchiveServiceError.noSelectedEntries
+        }
+
+        let fileManager = FileManager.default
+
+        let temporaryFolder = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        let previewURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(
+                URL(fileURLWithPath: normalizedPreviewPath).pathExtension
+            )
+
+        do {
+            try fileManager.createDirectory(
+                at: temporaryFolder,
+                withIntermediateDirectories: true
+            )
+
+            defer {
+                try? fileManager.removeItem(at: temporaryFolder)
+            }
+
+            // Безопасно извлекаем содержимое во временную папку
+            try reader.extract(
+                archiveURL,
+                to: temporaryFolder,
+                options: [.safeWrites, .noOverwrite],
+                permissionMode: .normalized
+            )
+
+            let sourceURL = temporaryFolder
+                .appendingPathComponent(normalizedPreviewPath)
+                .standardizedFileURL
+
+            let rootPath = temporaryFolder.path + "/"
+
+            guard sourceURL.path.hasPrefix(rootPath),
+                  fileManager.fileExists(atPath: sourceURL.path) else {
+                throw ArchiveServiceError.noSelectedEntries
+            }
+
+            try fileManager.copyItem(
+                at: sourceURL,
+                to: previewURL
+            )
+
+            return previewURL
+
+        } catch {
+            try? fileManager.removeItem(at: previewURL)
+            throw error
+        }
+    }
+
+
     // MARK: - Validation
 
     private func validateArchive(_ url: URL) throws {
