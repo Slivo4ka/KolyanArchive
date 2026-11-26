@@ -8,7 +8,7 @@ import WebKit
 import PDFKit
 import QuickLook
 
-private enum ArchiveSortOption {
+private enum ArchiveSortOption: Equatable {
     case nameAscending
     case nameDescending
     case sizeDescending
@@ -627,42 +627,68 @@ var body: some View {
                         in: RoundedRectangle(cornerRadius: 13)
                     )
 
+                    
                     Menu {
                         Button {
                             sortOption = .nameAscending
                         } label: {
-                            Label(
-                                tr("Имя: А–Я", "Name: A–Z"),
-                                systemImage: "text"
-                            )
+                            HStack {
+                                Text(tr("Имя: А–Я", "Name: A–Z"))
+
+                                Spacer()
+
+                                if sortOption == .nameAscending {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.cyan)
+                                }
+                            }
                         }
 
                         Button {
                             sortOption = .nameDescending
                         } label: {
-                            Label(
-                                tr("Имя: Я–А", "Name: Z–A"),
-                                systemImage: "text"
-                            )
+                            HStack {
+                                Text(tr("Имя: Я–А", "Name: Z–A"))
+
+                                Spacer()
+
+                                if sortOption == .nameDescending {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.cyan)
+                                }
+                            }
                         }
 
                         Button {
                             sortOption = .sizeDescending
                         } label: {
-                            Label(
-                                tr("Размер: сначала большие", "Size: largest first"),
-                                systemImage: "arrow.down"
-                            )
+                            HStack {
+                                Text(tr("Размер: сначала большие", "Size: largest first"))
+
+                                Spacer()
+
+                                if sortOption == .sizeDescending {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.cyan)
+                                }
+                            }
                         }
 
                         Button {
                             sortOption = .sizeAscending
                         } label: {
-                            Label(
-                                tr("Размер: сначала маленькие", "Size: smallest first"),
-                                systemImage: "arrow.up"
-                            )
+                            HStack {
+                                Text(tr("Размер: сначала маленькие", "Size: smallest first"))
+
+                                Spacer()
+
+                                if sortOption == .sizeAscending {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.cyan)
+                                }
+                            }
                         }
+
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 17, weight: .semibold))
@@ -987,7 +1013,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
         }
 
         // Кнопка информации о файле или папке
-        
+
         Button {
             showEntryInfo(entry)
         } label: {
