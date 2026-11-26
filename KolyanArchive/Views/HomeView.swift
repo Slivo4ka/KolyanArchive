@@ -171,17 +171,13 @@ var body: some View {
         }
     .tint(.white)
     .onChange(of: scenePhase) { _, newPhase in
-        if newPhase == .active {
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + 0.2
-            ) {
-                UIApplication.shared.sendAction(
-                    #selector(UIResponder.resignFirstResponder),
-                    to: nil,
-                    from: nil,
-                    for: nil
-                )
-            }
+        if newPhase == .inactive || newPhase == .background {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
         }
     }
 }
