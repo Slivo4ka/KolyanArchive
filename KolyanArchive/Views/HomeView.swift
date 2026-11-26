@@ -1897,6 +1897,7 @@ private struct ArchiveGIFView: UIViewRepresentable {
     }
 }
 
+
 private struct ArchivePDFView: UIViewRepresentable {
 
     let archiveURL: URL
@@ -1924,38 +1925,68 @@ private struct ArchivePDFView: UIViewRepresentable {
             return
         }
 
-        context.coordinator.loadedPath = item.path
-
         do {
-            let archive = try Archive(
-                url: archiveURL,
-                accessMode: .read
-            )
+            let data: Data
 
-            guard let entry = archive.first(where: {
-                $0.path == item.path
-            }), entry.type == .file else {
-                return
+            if archiveURL.pathExtension.lowercased() == "rar" {
+
+                let temporaryURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                data = try Data(contentsOf: temporaryURL)
+
+            } else {
+
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                guard let entry = archive.first(where: {
+                    $0.path == item.path
+                }), entry.type == .file else {
+                    throw NSError(
+                        domain: "KolyanArchive",
+                        code: 1,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "PDF-файл не найден в архиве"
+                        ]
+                    )
+                }
+
+                let temporaryURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("pdf")
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                try archive.extract(entry, to: temporaryURL)
+
+                data = try Data(contentsOf: temporaryURL)
             }
-
-            let temporaryURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("pdf")
-
-            try archive.extract(entry, to: temporaryURL)
-
-            defer {
-                try? FileManager.default.removeItem(at: temporaryURL)
-            }
-
-            let data = try Data(contentsOf: temporaryURL)
 
             guard let document = PDFDocument(data: data) else {
-                return
+                throw NSError(
+                    domain: "KolyanArchive",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Не удалось открыть PDF-файл"
+                    ]
+                )
             }
 
             pdfView.document = document
             pdfView.goToFirstPage(nil)
+
+            context.coordinator.loadedPath = item.path
 
         } catch {
             context.coordinator.loadedPath = nil
@@ -1971,6 +2002,7 @@ private struct ArchivePDFView: UIViewRepresentable {
         var loadedPath: String?
     }
 }
+
 
 private struct ArchiveTextView: View {
 
@@ -2013,29 +2045,47 @@ private struct ArchiveTextView: View {
 
     private func loadText() {
         do {
-            let archive = try Archive(
-                url: archiveURL,
-                accessMode: .read
-            )
+            let data: Data
 
-            guard let entry = archive.first(where: {
-                $0.path == item.path
-            }), entry.type == .file else {
-                loadFailed = true
-                return
+            if archiveURL.pathExtension.lowercased() == "rar" {
+
+                let temporaryURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                data = try Data(contentsOf: temporaryURL)
+
+            } else {
+
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                guard let entry = archive.first(where: {
+                    $0.path == item.path
+                }), entry.type == .file else {
+                    loadFailed = true
+                    return
+                }
+
+                let temporaryURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("txt")
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                try archive.extract(entry, to: temporaryURL)
+
+                data = try Data(contentsOf: temporaryURL)
             }
-
-            let temporaryURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("txt")
-
-            try archive.extract(entry, to: temporaryURL)
-
-            defer {
-                try? FileManager.default.removeItem(at: temporaryURL)
-            }
-
-            let data = try Data(contentsOf: temporaryURL)
 
             if let decodedText =
                 String(data: data, encoding: .utf8) ??
@@ -2044,6 +2094,8 @@ private struct ArchiveTextView: View {
 
                 text = decodedText
                     .replacingOccurrences(of: "\u{FEFF}", with: "")
+                loadFailed = false
+
             } else {
                 loadFailed = true
             }
