@@ -657,7 +657,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
                     selectedPaths.insert(entry.path)
                 }
 
-            } else if isPreviewable && !isRARArchive {
+            } else if isPreviewable {
                 openImage(entry)
             }
 
@@ -727,7 +727,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
             (
                 isSelectionMode
                     ? isCovered
-                    : (isRARArchive || !isPreviewable)
+                    : !isPreviewable
             )
         )
 
