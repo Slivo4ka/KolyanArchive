@@ -329,12 +329,13 @@ var body: some View {
         }
     }
 }
-
+    
     private var archiveFolderDefaultName: String {
-        guard let archiveURL else { return "" }
+        guard archiveURL != nil else { return "" }
 
-        let name = archiveURL.deletingPathExtension().lastPathComponent
-        return name
+        return URL(fileURLWithPath: archiveName)
+            .deletingPathExtension()
+            .lastPathComponent
     }
 
     // MARK: - Header
