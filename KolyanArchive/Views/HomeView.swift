@@ -1530,10 +1530,11 @@ struct ImageGalleryView: View {
                         )
                     } else {
                         ArchiveImagePage(
-                            archiveURL: archiveURL,
-                            item: items[selectedIndex],
-                            isZoomed: $isZoomed
-                        )
+    archiveURL: archiveURL,
+    item: items[selectedIndex],
+    isEnglish: isEnglish,
+    isZoomed: $isZoomed
+)
                     }
                 }
 
@@ -1618,6 +1619,7 @@ struct ImageGalleryView: View {
 private struct ArchiveImagePage: View {
 
     let archiveURL: URL
+    let isEnglish: Bool
     let item: ArchiveImage
     @Binding var isZoomed: Bool
 
@@ -1770,7 +1772,11 @@ private struct ArchiveImagePage: View {
                             .font(.system(size: 32))
                             .foregroundStyle(.orange)
 
-                        Text("Не удалось открыть изображение")
+                        Text(
+                            isEnglish
+                                ? "Unable to open image"
+                                : "Не удалось открыть изображение"
+                        )
                             .font(.headline)
                             .foregroundStyle(.white)
 
@@ -1893,7 +1899,9 @@ private struct ArchiveImagePage: View {
                             domain: "KolyanArchive",
                             code: 1,
                             userInfo: [
-                                NSLocalizedDescriptionKey: "Файл не найден в архиве"
+                                NSLocalizedDescriptionKey: isEnglish
+    ? "File not found in archive"
+    : "Файл не найден в архиве"
                             ]
                         )
                     }
@@ -1916,7 +1924,9 @@ private struct ArchiveImagePage: View {
             }.value
 
             guard let loadedImage = UIImage(data: imageData) else {
-                loadingError = "Файл извлечён, но iOS не смогла распознать изображение."
+                loadingError = isEnglish
+                    ? "The file was extracted, but iOS couldn't recognize the image."
+                    : "Файл извлечён, но iOS не смогла распознать изображение."
                 return
             }
 
