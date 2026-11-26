@@ -16,6 +16,22 @@ private enum ArchiveSortOption: Equatable {
 }
 
 struct HomeView: View {
+
+    private struct ArchiveNavigationState {
+        let archiveURL: URL
+        let archiveName: String
+        let currentDirectoryPath: String
+        let entries: [ArchiveEntry]
+        let searchText: String
+        let searchResults: [ArchiveEntry]
+        let selectedPaths: Set<String>
+        let isSelectionMode: Bool
+        let isSelectionConfirmed: Bool
+
+    }
+
+    @State private var archiveNavigationStack: [ArchiveNavigationState] = []
+
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var isImporterPresented = false
@@ -483,7 +499,7 @@ var body: some View {
                 // Первая строка: навигация и значки
                 HStack(spacing: 8) {
 
-                    if !currentDirectoryPath.isEmpty {
+                    if !currentDirectoryPath.isEmpty || !archiveNavigationStack.isEmpty {
                         Button {
                             goBack()
                         } label: {
@@ -927,6 +943,9 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
     ]
 
     let isPreviewable = previewableFormats.contains(entry.fileExtension)
+    let isNestedArchive = ["zip", "rar", "iso"].contains(
+        entry.fileExtension.lowercased()
+    )
 
     return HStack(spacing: 12) {
 
@@ -942,6 +961,9 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
                 } else {
                     selectedPaths.insert(entry.path)
                 }
+
+            } else if isNestedArchive {
+                openNestedArchive(entry)
 
             } else if isPreviewable {
                 openImage(entry)
@@ -1013,7 +1035,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
             (
                 isSelectionMode
                     ? isCovered
-                    : !isPreviewable
+                    : !(isPreviewable || isNestedArchive)
             )
         )
 
@@ -1118,6 +1140,87 @@ private func openImage(_ entry: ArchiveEntry) {
 }
     // MARK: - Directory navigation
 
+    private func openNestedArchive(_ entry: ArchiveEntry) {
+
+        guard let parentURL = archiveURL else { return }
+
+        let fileExtension = entry.fileExtension.lowercased()
+
+        guard ["zip", "rar", "iso"].contains(fileExtension) else {
+            return
+        }
+
+        guard archiveNavigationStack.count < 10 else {
+            errorMessage = tr(
+                "Превышена максимальная глубина вложенности архивов.",
+                "Maximum nested archive depth reached."
+            )
+            showingError = true
+            return
+        }
+
+        do {
+            let nestedURL: URL
+
+            switch parentURL.pathExtension.lowercased() {
+
+            case "zip":
+                nestedURL = try archiveService.extractPreviewFile(
+                    archiveURL: parentURL,
+                    path: entry.path
+                )
+
+            case "rar":
+                nestedURL = try rarArchiveService.extractPreviewFile(
+                    archiveURL: parentURL,
+                    path: entry.path
+                )
+
+            case "iso":
+                nestedURL = try isoArchiveService.extractPreviewFile(
+                    archiveURL: parentURL,
+                    path: entry.path
+                )
+
+            default:
+                return
+            }
+
+            let nestedEntries = try listArchiveContents(
+                of: nestedURL,
+                in: ""
+            )
+
+            archiveNavigationStack.append(
+                ArchiveNavigationState(
+                    archiveURL: parentURL,
+                    archiveName: archiveName,
+                    currentDirectoryPath: currentDirectoryPath,
+                    entries: entries,
+                    searchText: searchText,
+                    searchResults: searchResults,
+                    selectedPaths: selectedPaths,
+                    isSelectionMode: isSelectionMode,
+                    isSelectionConfirmed: isSelectionConfirmed
+                )
+            )
+
+            archiveURL = nestedURL
+            archiveName = entry.name
+            currentDirectoryPath = ""
+            entries = nestedEntries
+            searchText = ""
+            searchResults = []
+            selectedPaths = []
+            isSelectionMode = false
+            isSelectionConfirmed = false
+
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+
     private func openDirectory(_ entry: ArchiveEntry) {
         guard let archiveURL else { return }
         searchText = ""
@@ -1139,30 +1242,56 @@ private func openImage(_ entry: ArchiveEntry) {
             showError(error)
         }
     }
-
+    
     private func goBack() {
-        searchText = ""
-        searchResults = []
 
-        let components = currentDirectoryPath.split(separator: "/")
+        // Если мы находимся внутри папки — возвращаемся на уровень выше.
+        if !currentDirectoryPath.isEmpty {
 
-        currentDirectoryPath = components
-            .dropLast()
-            .joined(separator: "/")
+            searchText = ""
+            searchResults = []
 
-        guard let archiveURL else { return }
+            let components = currentDirectoryPath.split(separator: "/")
 
-        do {
-            entries = try listArchiveContents(
-                of: archiveURL,
-                in: currentDirectoryPath
-            )
+            currentDirectoryPath = components
+                .dropLast()
+                .joined(separator: "/")
 
-            message = entries.isEmpty ? tr("Эта папка пуста.", "This folder is empty.") : ""
+            guard let archiveURL else { return }
 
-        } catch {
-            showError(error)
+            do {
+                entries = try listArchiveContents(
+                    of: archiveURL,
+                    in: currentDirectoryPath
+                )
+
+                message = entries.isEmpty
+                    ? tr("Эта папка пуста.", "This folder is empty.")
+                    : ""
+
+            } catch {
+                showError(error)
+            }
+
+            return
         }
+
+        // Если мы в корне вложенного архива — возвращаемся к родительскому.
+        guard let previous = archiveNavigationStack.popLast() else {
+            return
+        }
+
+        archiveURL = previous.archiveURL
+        archiveName = previous.archiveName
+        currentDirectoryPath = previous.currentDirectoryPath
+        entries = previous.entries
+        searchText = previous.searchText
+        searchResults = previous.searchResults
+        selectedPaths = previous.selectedPaths
+        isSelectionMode = previous.isSelectionMode
+        isSelectionConfirmed = previous.isSelectionConfirmed
+
+        message = ""
     }
 
     // MARK: - Feature cards

@@ -422,8 +422,48 @@ struct ZIPArchiveService {
         }
     }
 
-    // MARK: - Create ZIP
+    // MARK: - Extract single file
 
+    func extractPreviewFile(
+        archiveURL: URL,
+        path: String
+    ) throws -> URL {
+
+        try validateArchive(archiveURL)
+
+        let normalizedFilePath = try normalizedPath(path)
+
+        let archive = try Archive(
+            url: archiveURL,
+            accessMode: .read
+        )
+
+        guard let matchingEntry = archive.first(where: {
+            $0.path == normalizedFilePath &&
+            $0.type == .file
+        }) else {
+            throw ArchiveServiceError.noSelectedEntries
+        }
+
+        let fileExtension = URL(
+            fileURLWithPath: normalizedFilePath
+        ).pathExtension
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
+
+        do {
+            try archive.extract(matchingEntry, to: outputURL)
+            return outputURL
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
+    }
+
+    // MARK: - Create ZIP
+    
     func createZIP(
         from sourceURLs: [URL],
         at destinationURL: URL
@@ -435,11 +475,29 @@ struct ZIPArchiveService {
             throw ArchiveServiceError.noSelectedEntries
         }
 
-        guard !fileManager.fileExists(
-            atPath: destinationURL.path
-        ) else {
-            throw ArchiveServiceError.destinationFileExists(
-                destinationURL.lastPathComponent
+        // Подбираем свободное имя архива.
+        var finalDestinationURL = destinationURL
+
+        if fileManager.fileExists(atPath: finalDestinationURL.path) {
+
+            let parentFolder = destinationURL.deletingLastPathComponent()
+            let baseName = destinationURL.deletingPathExtension().lastPathComponent
+            let fileExtension = destinationURL.pathExtension
+
+            var index = 1
+
+            repeat {
+                let newName = fileExtension.isEmpty
+                    ? "\(baseName)(\(index))"
+                    : "\(baseName)(\(index)).\(fileExtension)"
+
+                finalDestinationURL = parentFolder
+                    .appendingPathComponent(newName)
+
+                index += 1
+
+            } while fileManager.fileExists(
+                atPath: finalDestinationURL.path
             )
         }
 
@@ -486,7 +544,7 @@ struct ZIPArchiveService {
 
         try fileManager.zipItem(
             at: temporaryFolder,
-            to: destinationURL,
+            to: finalDestinationURL,
             shouldKeepParent: false,
             compressionMethod: .deflate
         )
