@@ -1774,6 +1774,7 @@ private struct ArchiveImagePage: View {
     }
 }
 
+
 private struct ArchiveGIFView: UIViewRepresentable {
 
     let archiveURL: URL
@@ -1803,25 +1804,46 @@ private struct ArchiveGIFView: UIViewRepresentable {
         context.coordinator.loadedPath = item.path
 
         do {
-            let archive = try Archive(
-                url: archiveURL,
-                accessMode: .read
-            )
+            let data: Data
 
-            guard let entry = archive.first(where: {
-                $0.path == item.path
-            }), entry.type == .file else {
-                return
+            if archiveURL.pathExtension.lowercased() == "rar" {
+
+                let temporaryURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                data = try Data(contentsOf: temporaryURL)
+
+            } else {
+
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                guard let entry = archive.first(where: {
+                    $0.path == item.path
+                }), entry.type == .file else {
+                    return
+                }
+
+                let temporaryURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("gif")
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                try archive.extract(entry, to: temporaryURL)
+
+                data = try Data(contentsOf: temporaryURL)
             }
-
-            let temporaryURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("gif")
-
-            try archive.extract(entry, to: temporaryURL)
-
-            let data = try Data(contentsOf: temporaryURL)
-            try? FileManager.default.removeItem(at: temporaryURL)
 
             let base64 = data.base64EncodedString()
 
