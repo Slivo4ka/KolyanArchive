@@ -1,46 +1,9 @@
-
-import SwiftUI
-
-struct SplashScreenView: View {
-    @State private var scale: CGFloat = 1.0
-
-    var body: some View {
-        GeometryReader { geometry in
-            Image("SplashScreen")
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    width: geometry.size.width,
-                    height: geometry.size.height
-                )
-                .clipped()
-                .scaleEffect(scale, anchor: .center)
-                .frame(
-                    width: geometry.size.width,
-                    height: geometry.size.height
-                )
-                .background(Color.black)
-                .ignoresSafeArea()
-                .onAppear {
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(100))
-
-                        withAnimation(.easeInOut(duration: 0.40)) {
-                            scale = 1.22
-                        }
-                    }
-                }
-        }
-        .background(Color.black)
-        .ignoresSafeArea()
-    }
-}
-
-
 struct SplashRootView: View {
     @Environment(\.scenePhase) private var scenePhase
+
     @State private var showSplash = true
     @State private var splashID = UUID()
+    @State private var backgroundEnteredAt: Date? = nil
 
     var body: some View {
         ZStack {
@@ -62,11 +25,26 @@ struct SplashRootView: View {
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active && !showSplash {
-                splashID = UUID()
-                showSplash = true
+
+            if newPhase == .background {
+                backgroundEnteredAt = Date()
+            }
+
+            if newPhase == .active,
+               let backgroundDate = backgroundEnteredAt {
+
+                let elapsedTime = Date().timeIntervalSince(backgroundDate)
+
+                backgroundEnteredAt = nil
+
+                if elapsedTime >= 30 {
+                    splashID = UUID()
+
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        showSplash = true
+                    }
+                }
             }
         }
     }
 }
-

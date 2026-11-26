@@ -63,6 +63,8 @@ struct HomeView: View {
     @State private var archiveName = ""
     @State private var archiveURL: URL?
 
+    @State private var backgroundEnteredAt: Date? = nil
+
     @State private var isNamingExtractionFolder = false
     @State private var extractionFolderName = ""
     @State private var extractionNameFocusRequest = UUID()
@@ -290,14 +292,40 @@ var body: some View {
         }
         }
     .tint(.white)
+    
     .onChange(of: scenePhase) { _, newPhase in
-        if newPhase == .inactive || newPhase == .background {
+
+        if newPhase == .inactive {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
                 to: nil,
                 from: nil,
                 for: nil
             )
+        }
+
+        if newPhase == .background {
+            backgroundEnteredAt = Date()
+
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
+        }
+
+        if newPhase == .active,
+        let backgroundDate = backgroundEnteredAt {
+
+            let elapsedTime = Date().timeIntervalSince(backgroundDate)
+
+            backgroundEnteredAt = nil
+
+            if elapsedTime >= 30 {
+                closeArchive()
+                // Здесь подключим запуск существующей заставки.
+            }
         }
     }
 }
