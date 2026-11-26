@@ -639,7 +639,8 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
     let previewableFormats = [
         "jpg", "jpeg", "png", "gif",
         "heic", "webp", "pdf", "txt",
-        "rtf", "html", "htm", "docx", "xlsx"
+        "rtf", "html", "htm",
+        "docx", "xlsx", "pptx"
     ]
 
     let isPreviewable = previewableFormats.contains(entry.fileExtension)
@@ -782,7 +783,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
 private func openImage(_ entry: ArchiveEntry) {
     guard let archiveURL else { return }
 
-    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt", "rtf", "html", "htm", "docx", "xlsx"]
+    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt", "rtf", "html", "htm", "docx", "xlsx", "pptx"]
 
     let images = displayedEntries
         .filter {
@@ -1400,7 +1401,7 @@ struct ImageGalleryView: View {
         item: items[selectedIndex],
         isEnglish: isEnglish
     )
-                    } else if ["docx", "xlsx"].contains(items[selectedIndex].fileExtension) {
+                    } else if ["docx", "xlsx", "pptx"].contains(items[selectedIndex].fileExtension) {
                         ArchiveOfficeView(
                             archiveURL: archiveURL,
                             item: items[selectedIndex],
