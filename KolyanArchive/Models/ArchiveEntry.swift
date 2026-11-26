@@ -6,6 +6,21 @@ struct ArchiveEntry: Identifiable, Hashable {
     let path: String
     let sizeDescription: String
     let isDirectory: Bool
+    let sizeInBytes: Int64
+
+    init(
+        id: String,
+        path: String,
+        sizeDescription: String,
+        isDirectory: Bool,
+        sizeInBytes: Int64 = 0
+    ) {
+        self.id = id
+        self.path = path
+        self.sizeDescription = sizeDescription
+        self.isDirectory = isDirectory
+        self.sizeInBytes = sizeInBytes
+    }
 
     var name: String {
         URL(fileURLWithPath: path).lastPathComponent
