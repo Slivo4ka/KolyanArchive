@@ -679,9 +679,13 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
-                    Text(entry.sizeDescription)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.45))
+                    Text(
+                        entry.isDirectory
+                            ? tr("Папка", "Folder")
+                            : entry.sizeDescription
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.45))
                 }
 
                 Spacer()
