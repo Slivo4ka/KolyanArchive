@@ -23,9 +23,9 @@ struct SplashScreenView: View {
                 .ignoresSafeArea()
                 .onAppear {
                     Task {
-                        try? await Task.sleep(for: .milliseconds(200))
+                        try? await Task.sleep(for: .milliseconds(100))
 
-                        withAnimation(.easeInOut(duration: 0.6)) {
+                        withAnimation(.easeInOut(duration: 0.40)) {
                             scale = 1.22
                         }
                     }
@@ -52,9 +52,9 @@ struct SplashRootView: View {
                     .zIndex(1)
                     .transition(.opacity)
                     .task {
-                        try? await Task.sleep(for: .milliseconds(1400))
+                        try? await Task.sleep(for: .milliseconds(950))
 
-                        withAnimation(.easeOut(duration: 0.3)) {
+                        withAnimation(.easeOut(duration: 0.2)) {
                             showSplash = false
                         }
                     }
