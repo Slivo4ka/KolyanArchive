@@ -11,6 +11,7 @@ import QuickLook
 struct HomeView: View {
 
     @State private var isImporterPresented = false
+    @State private var selectedArchiveFormat = "zip"
     @State private var isChoosingDestination = false
     @State private var isSelectionMode = false
     @State private var isSelectionConfirmed = false
@@ -42,10 +43,26 @@ struct HomeView: View {
 
     private let archiveService = ZIPArchiveService()
     private let rarArchiveService = RARArchiveService()
+    private let isoArchiveService = ISOArchiveService()
 
     private var isRARArchive: Bool {
         archiveURL?.pathExtension.lowercased() == "rar"
     }
+    private var isISOArchive: Bool {
+    archiveURL?.pathExtension.lowercased() == "iso"
+    }
+
+    private var selectedArchiveContentTypes: [UTType] {
+        switch selectedArchiveFormat {
+        case "rar":
+            return [UTType(filenameExtension: "rar") ?? .data]
+        case "iso":
+            return [UTType(filenameExtension: "iso") ?? .data]
+        default:
+            return [.zip]
+        }
+    }
+    
     private func tr(_ ru: String, _ en: String) -> String {
         isEnglish ? en : ru
     }
@@ -69,7 +86,7 @@ var body: some View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 22) {
                     header
-                    openArchiveButton
+                    openArchiveButtons
 
                     if archiveURL != nil {
                         extractArchiveButton
@@ -93,7 +110,7 @@ var body: some View {
         .toolbar(.hidden, for: .navigationBar)
         .fileImporter(
             isPresented: $isImporterPresented,
-            allowedContentTypes: isChoosingDestination ? [.folder] : [.data],
+            allowedContentTypes: isChoosingDestination ? [.folder] : selectedArchiveContentTypes,
             allowsMultipleSelection: false
         ) { result in
             if isChoosingDestination {
@@ -208,20 +225,73 @@ var body: some View {
 
     // MARK: - Open archive button
 
-    private var openArchiveButton: some View {
+    private var openArchiveButtons: some View {
+        VStack(spacing: 10) {
+            archiveOpenButton(
+                title: "ZIP",
+                subtitle: tr("Открыть ZIP-архив", "Open ZIP archive"),
+                icon: "doc.zipper",
+                format: "zip",
+                colors: [.indigo, .blue]
+            )
+
+            archiveOpenButton(
+                title: "RAR",
+                subtitle: tr("Открыть RAR-архив", "Open RAR archive"),
+                icon: "archivebox",
+                format: "rar",
+                colors: [.orange, .red]
+            )
+
+            archiveOpenButton(
+                title: "ISO",
+                subtitle: tr("Открыть ISO-образ", "Open ISO image"),
+                icon: "opticaldisc",
+                format: "iso",
+                colors: [.cyan, .blue]
+            )
+        }
+    }
+
+    private func archiveOpenButton(
+        title: String,
+        subtitle: String,
+        icon: String,
+        format: String,
+        colors: [Color]
+    ) -> some View {
         Button {
+            selectedArchiveFormat = format
             isImporterPresented = true
         } label: {
-            Label(
-                tr("Открыть архив", "Open archive"),
-                systemImage: "folder.badge.plus"
-            )
-            .font(.headline)
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 23, weight: .semibold))
+                    .frame(width: 42, height: 42)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline)
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .opacity(0.8)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 17)
             .background(
                 LinearGradient(
-                    colors: [.indigo, .blue],
+                    colors: colors,
                     startPoint: .leading,
                     endPoint: .trailing
                 ),
@@ -569,8 +639,18 @@ var body: some View {
         of url: URL,
         in directoryPath: String = ""
     ) throws -> [ArchiveEntry] {
-        if url.pathExtension.lowercased() == "rar" {
+
+        let fileExtension = url.pathExtension.lowercased()
+
+        if fileExtension == "rar" {
             return try rarArchiveService.listContents(
+                of: url,
+                in: directoryPath
+            )
+        }
+
+        if fileExtension == "iso" {
+            return try isoArchiveService.listContents(
                 of: url,
                 in: directoryPath
             )
@@ -586,8 +666,18 @@ var body: some View {
         of url: URL,
         matching query: String
     ) throws -> [ArchiveEntry] {
-        if url.pathExtension.lowercased() == "rar" {
+
+        let fileExtension = url.pathExtension.lowercased()
+
+        if fileExtension == "rar" {
             return try rarArchiveService.searchContents(
+                of: url,
+                matching: query
+            )
+        }
+
+        if fileExtension == "iso" {
+            return try isoArchiveService.searchContents(
                 of: url,
                 matching: query
             )
@@ -991,7 +1081,7 @@ private func openImage(_ entry: ArchiveEntry) {
             var folders = Set<String>()
             var totalUncompressedSize: UInt64 = 0
 
-            if isRARArchive {
+            if isRARArchive || isISOArchive {
 
                 // Получаем информацию из RAR через LibArchive
                 let reader = ArchiveReader()
@@ -1181,6 +1271,23 @@ private func beginExtraction(
                 )
             } else {
                 extractionFolder = try rarArchiveService.extract(
+                    archiveURL: archiveURL,
+                    to: destinationURL,
+                    folderName: extractionFolderName
+                )
+            }
+
+        } else if isISOArchive {
+
+            if isSelection {
+                extractionFolder = try isoArchiveService.extractSelected(
+                    archiveURL: archiveURL,
+                    selectedPaths: selectedPaths,
+                    to: destinationURL,
+                    folderName: extractionFolderName
+                )
+            } else {
+                extractionFolder = try isoArchiveService.extract(
                     archiveURL: archiveURL,
                     to: destinationURL,
                     folderName: extractionFolderName
@@ -1745,6 +1852,19 @@ private struct ArchiveImagePage: View {
 
                     return try Data(contentsOf: previewURL)
 
+                } else if currentArchiveURL.pathExtension.lowercased() == "iso" {
+
+                    let previewURL = try ISOArchiveService().extractPreviewFile(
+                        archiveURL: currentArchiveURL,
+                        path: currentPath
+                    )
+
+                    defer {
+                        try? FileManager.default.removeItem(at: previewURL)
+                    }
+
+                    return try Data(contentsOf: previewURL)
+
                 } else {
 
                     let archive = try Archive(
@@ -1830,6 +1950,19 @@ private struct ArchiveGIFView: UIViewRepresentable {
             if archiveURL.pathExtension.lowercased() == "rar" {
 
                 let temporaryURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                data = try Data(contentsOf: temporaryURL)
+
+            } else if archiveURL.pathExtension.lowercased() == "iso" {
+
+                let temporaryURL = try ISOArchiveService().extractPreviewFile(
                     archiveURL: archiveURL,
                     path: item.path
                 )
@@ -1962,6 +2095,19 @@ private struct ArchivePDFView: UIViewRepresentable {
 
                 data = try Data(contentsOf: temporaryURL)
 
+            } else if archiveURL.pathExtension.lowercased() == "iso" {
+
+                let temporaryURL = try ISOArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                data = try Data(contentsOf: temporaryURL)
+
             } else {
 
                 let archive = try Archive(
@@ -2068,9 +2214,24 @@ private struct ArchiveTextView: View {
         do {
             let data: Data
 
-            if archiveURL.pathExtension.lowercased() == "rar" {
+            let fileExtension = archiveURL.pathExtension.lowercased()
+
+            if fileExtension == "rar" {
 
                 let temporaryURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                defer {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+
+                data = try Data(contentsOf: temporaryURL)
+
+            } else if fileExtension == "iso" {
+
+                let temporaryURL = try ISOArchiveService().extractPreviewFile(
                     archiveURL: archiveURL,
                     path: item.path
                 )
@@ -2170,7 +2331,9 @@ private struct ArchiveRTFView: UIViewRepresentable {
             do {
                 let data: Data
 
-                if archiveURL.pathExtension.lowercased() == "zip" {
+                let fileExtension = archiveURL.pathExtension.lowercased()
+
+                if fileExtension == "zip" {
                     let temporaryURL = FileManager.default.temporaryDirectory
                         .appendingPathComponent(UUID().uuidString)
 
@@ -2190,7 +2353,21 @@ private struct ArchiveRTFView: UIViewRepresentable {
                     _ = try archive.extract(entry, to: temporaryURL)
                     data = try Data(contentsOf: temporaryURL)
 
+                } else if fileExtension == "iso" {
+
+                    let temporaryURL = try ISOArchiveService().extractPreviewFile(
+                        archiveURL: archiveURL,
+                        path: item.path
+                    )
+
+                    defer {
+                        try? FileManager.default.removeItem(at: temporaryURL)
+                    }
+
+                    data = try Data(contentsOf: temporaryURL)
+
                 } else {
+
                     let temporaryURL = try RARArchiveService().extractPreviewFile(
                         archiveURL: archiveURL,
                         path: item.path
@@ -2276,7 +2453,9 @@ private struct ArchiveHTMLView: UIViewRepresentable {
             do {
                 let data: Data
 
-                if archiveURL.pathExtension.lowercased() == "zip" {
+                let fileExtension = archiveURL.pathExtension.lowercased()
+
+                if fileExtension == "zip" {
                     let temporaryURL = FileManager.default.temporaryDirectory
                         .appendingPathComponent(UUID().uuidString)
 
@@ -2296,7 +2475,21 @@ private struct ArchiveHTMLView: UIViewRepresentable {
                     _ = try archive.extract(entry, to: temporaryURL)
                     data = try Data(contentsOf: temporaryURL)
 
+                } else if fileExtension == "iso" {
+
+                    let temporaryURL = try ISOArchiveService().extractPreviewFile(
+                        archiveURL: archiveURL,
+                        path: item.path
+                    )
+
+                    defer {
+                        try? FileManager.default.removeItem(at: temporaryURL)
+                    }
+
+                    data = try Data(contentsOf: temporaryURL)
+
                 } else {
+
                     let temporaryURL = try RARArchiveService().extractPreviewFile(
                         archiveURL: archiveURL,
                         path: item.path
@@ -2565,7 +2758,9 @@ private struct ArchiveOfficeView: UIViewControllerRepresentable {
         do {
             let fileURL: URL
 
-            if archiveURL.pathExtension.lowercased() == "zip" {
+            let fileExtension = archiveURL.pathExtension.lowercased()
+
+            if fileExtension == "zip" {
 
                 let directoryURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent(
@@ -2601,6 +2796,15 @@ private struct ArchiveOfficeView: UIViewControllerRepresentable {
 
                 fileURL = destinationURL
                 coordinator.cleanupURLs.append(directoryURL)
+
+            } else if fileExtension == "iso" {
+
+                fileURL = try ISOArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                coordinator.cleanupURLs.append(fileURL)
 
             } else {
 
