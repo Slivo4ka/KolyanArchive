@@ -637,7 +637,8 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
 
     let previewableFormats = [
         "jpg", "jpeg", "png", "gif",
-        "heic", "webp", "pdf", "txt"
+        "heic", "webp", "pdf", "txt",
+        "rtf", "html", "htm"
     ]
 
     let isPreviewable = previewableFormats.contains(entry.fileExtension)
@@ -780,7 +781,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
 private func openImage(_ entry: ArchiveEntry) {
     guard let archiveURL else { return }
 
-    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt"]
+    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt", "rtf", "html", "htm"]
 
     let images = displayedEntries
         .filter {
@@ -1382,6 +1383,18 @@ struct ImageGalleryView: View {
                         )
                     } else if items[selectedIndex].fileExtension == "txt" {
                         ArchiveTextView(
+                            archiveURL: archiveURL,
+                            item: items[selectedIndex],
+                            isEnglish: isEnglish
+                        )
+                    } else if items[selectedIndex].fileExtension == "rtf" {
+                        ArchiveRTFView(
+                            archiveURL: archiveURL,
+                            item: items[selectedIndex],
+                            isEnglish: isEnglish
+                        )
+                    } else if ["html", "htm"].contains(items[selectedIndex].fileExtension) {
+                        ArchiveHTMLView(
                             archiveURL: archiveURL,
                             item: items[selectedIndex],
                             isEnglish: isEnglish
@@ -2104,6 +2117,225 @@ private struct ArchiveTextView: View {
             loadFailed = true
             print("TXT loading error: \(error)")
         }
+    }
+}
+
+// MARK: - RTF Preview
+
+private struct ArchiveRTFView: UIViewRepresentable {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+    let isEnglish: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+
+        textView.backgroundColor = .white
+        textView.textColor = .black
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.alwaysBounceVertical = true
+        textView.font = .systemFont(ofSize: 16)
+        textView.textContainerInset = UIEdgeInsets(
+            top: 75,
+            left: 20,
+            bottom: 85,
+            right: 20
+        )
+
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        guard context.coordinator.loadedPath != item.path else {
+            return
+        }
+
+        context.coordinator.loadedPath = item.path
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let data: Data
+
+                if archiveURL.pathExtension.lowercased() == "zip" {
+                    let temporaryURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+
+                    defer {
+                        try? FileManager.default.removeItem(at: temporaryURL)
+                    }
+
+                    let archive = try Archive(url: archiveURL, accessMode: .read)
+
+                    guard let entry = archive[item.path] else {
+                        throw NSError(
+                            domain: "ArchiveRTF",
+                            code: 1
+                        )
+                    }
+
+                    _ = try archive.extract(entry, to: temporaryURL)
+                    data = try Data(contentsOf: temporaryURL)
+
+                } else {
+                    let temporaryURL = try RARArchiveService().extractPreviewFile(
+                        archiveURL: archiveURL,
+                        path: item.path
+                    )
+
+                    defer {
+                        try? FileManager.default.removeItem(at: temporaryURL)
+                    }
+
+                    data = try Data(contentsOf: temporaryURL)
+                }
+
+                let attributedText = try NSAttributedString(
+                    data: data,
+                    options: [
+                        .documentType: NSAttributedString.DocumentType.rtf
+                    ],
+                    documentAttributes: nil
+                )
+
+                DispatchQueue.main.async {
+                    textView.attributedText = attributedText
+                }
+
+            } catch {
+                DispatchQueue.main.async {
+                    context.coordinator.loadedPath = nil
+                    textView.text = isEnglish
+                        ? "Unable to open RTF document."
+                        : "Не удалось открыть RTF-документ."
+                    textView.textColor = .white
+                }
+            }
+        }
+    }
+
+    final class Coordinator {
+        var loadedPath: String?
+    }
+}
+
+
+// MARK: - HTML Preview
+
+private struct ArchiveHTMLView: UIViewRepresentable {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+    let isEnglish: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        let webView = WKWebView(
+            frame: .zero,
+            configuration: configuration
+        )
+
+        webView.isOpaque = false
+        webView.backgroundColor = UIColor(
+            red: 0.035,
+            green: 0.043,
+            blue: 0.075,
+            alpha: 1
+        )
+        webView.scrollView.backgroundColor = webView.backgroundColor
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.loadedPath != item.path else {
+            return
+        }
+
+        context.coordinator.loadedPath = item.path
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let data: Data
+
+                if archiveURL.pathExtension.lowercased() == "zip" {
+                    let temporaryURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+
+                    defer {
+                        try? FileManager.default.removeItem(at: temporaryURL)
+                    }
+
+                    let archive = try Archive(url: archiveURL, accessMode: .read)
+
+                    guard let entry = archive[item.path] else {
+                        throw NSError(
+                            domain: "ArchiveHTML",
+                            code: 1
+                        )
+                    }
+
+                    _ = try archive.extract(entry, to: temporaryURL)
+                    data = try Data(contentsOf: temporaryURL)
+
+                } else {
+                    let temporaryURL = try RARArchiveService().extractPreviewFile(
+                        archiveURL: archiveURL,
+                        path: item.path
+                    )
+
+                    defer {
+                        try? FileManager.default.removeItem(at: temporaryURL)
+                    }
+
+                    data = try Data(contentsOf: temporaryURL)
+                }
+
+                let html =
+                    String(data: data, encoding: .utf8)
+                    ?? String(data: data, encoding: .utf16)
+                    ?? String(data: data, encoding: .windowsCP1252)
+
+                guard let html else {
+                    throw NSError(
+                        domain: "ArchiveHTML",
+                        code: 2
+                    )
+                }
+
+                DispatchQueue.main.async {
+                    webView.loadHTMLString(html, baseURL: nil)
+                }
+
+            } catch {
+                DispatchQueue.main.async {
+                    context.coordinator.loadedPath = nil
+
+                    let message = isEnglish
+                        ? "Unable to open HTML document."
+                        : "Не удалось открыть HTML-документ."
+
+                    webView.loadHTMLString(
+                        "<html><body style='background:#090b13;color:white;font-family:-apple-system;padding:24px;'>\(message)</body></html>",
+                        baseURL: nil
+                    )
+                }
+            }
+        }
+    }
+
+    final class Coordinator {
+        var loadedPath: String?
     }
 }
 
