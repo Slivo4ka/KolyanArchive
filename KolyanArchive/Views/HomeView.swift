@@ -8,6 +8,13 @@ import WebKit
 import PDFKit
 import QuickLook
 
+private enum ArchiveSortOption {
+    case nameAscending
+    case nameDescending
+    case sizeDescending
+    case sizeAscending
+}
+
 struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
 
@@ -19,6 +26,8 @@ struct HomeView: View {
     @State private var selectedPaths: Set<String> = []
     @State private var isExtractingSelection = false
     @State private var archiveInfo: ArchiveInfo?
+    @State private var selectedEntryInfo: EntryInfo?
+    @State private var sortOption: ArchiveSortOption = .nameAscending
 
     @AppStorage("isEnglish") private var isEnglish = false
     init() {
@@ -55,6 +64,7 @@ struct HomeView: View {
     @State private var errorMessage = ""
     @State private var showingError = false
 
+
     private let archiveService = ZIPArchiveService()
     private let rarArchiveService = RARArchiveService()
     private let isoArchiveService = ISOArchiveService()
@@ -87,10 +97,44 @@ struct HomeView: View {
     }
 
     private var displayedEntries: [ArchiveEntry] {
-        isSearching ? searchResults : entries
-    }
+        let source = isSearching ? searchResults : entries
 
-    
+        return source.sorted { first, second in
+
+            // Папки всегда выше файлов
+            if first.isDirectory != second.isDirectory {
+                return first.isDirectory
+            }
+
+            // Папки всегда сортируются по имени
+            if first.isDirectory && second.isDirectory {
+                return first.name.localizedStandardCompare(second.name) == .orderedAscending
+            }
+
+            // Сортировка файлов
+            switch sortOption {
+
+            case .nameAscending:
+                return first.name.localizedStandardCompare(second.name) == .orderedAscending
+
+            case .nameDescending:
+                return first.name.localizedStandardCompare(second.name) == .orderedDescending
+
+            case .sizeDescending:
+                if first.sizeInBytes == second.sizeInBytes {
+                    return first.name.localizedStandardCompare(second.name) == .orderedAscending
+                }
+                return first.sizeInBytes > second.sizeInBytes
+
+            case .sizeAscending:
+                if first.sizeInBytes == second.sizeInBytes {
+                    return first.name.localizedStandardCompare(second.name) == .orderedAscending
+                }
+                return first.sizeInBytes < second.sizeInBytes
+            }
+        }
+    }
+ 
 var body: some View {
     NavigationStack {
         ZStack {
@@ -160,6 +204,7 @@ var body: some View {
         .sheet(item: $archiveInfo) { info in
             ArchiveInfoView(
                 info: info,
+                entryInfo: nil,
                 isEnglish: isEnglish
             )
             .presentationDetents([.medium])
@@ -549,37 +594,86 @@ var body: some View {
             }
 
             if archiveURL != nil {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.cyan)
+                HStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.cyan)
 
-                    TextField(
-                        tr("Поиск по архиву...", "Search archive..."),
-                        text: $searchText
-                    )
-                    .foregroundStyle(.white)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onChange(of: searchText) { _, newValue in
-                        performSearch(newValue)
-                    }
-
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                            searchResults = []
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.white.opacity(0.5))
+                        TextField(
+                            tr("Поиск по архиву...", "Search archive..."),
+                            text: $searchText
+                        )
+                        .foregroundStyle(.white)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: searchText) { _, newValue in
+                            performSearch(newValue)
                         }
-                        .buttonStyle(.plain)
+
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                                searchResults = []
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(13)
+                    .background(
+                        Color.white.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 13)
+                    )
+
+                    Menu {
+                        Button {
+                            sortOption = .nameAscending
+                        } label: {
+                            Label(
+                                tr("Имя: А–Я", "Name: A–Z"),
+                                systemImage: "text"
+                            )
+                        }
+
+                        Button {
+                            sortOption = .nameDescending
+                        } label: {
+                            Label(
+                                tr("Имя: Я–А", "Name: Z–A"),
+                                systemImage: "text"
+                            )
+                        }
+
+                        Button {
+                            sortOption = .sizeDescending
+                        } label: {
+                            Label(
+                                tr("Размер: сначала большие", "Size: largest first"),
+                                systemImage: "arrow.down"
+                            )
+                        }
+
+                        Button {
+                            sortOption = .sizeAscending
+                        } label: {
+                            Label(
+                                tr("Размер: сначала маленькие", "Size: smallest first"),
+                                systemImage: "arrow.up"
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.cyan)
+                            .frame(width: 46, height: 46)
+                            .background(
+                                Color.white.opacity(0.07),
+                                in: RoundedRectangle(cornerRadius: 13)
+                            )
                     }
                 }
-                .padding(13)
-                .background(
-                    Color.white.opacity(0.07),
-                    in: RoundedRectangle(cornerRadius: 13)
-                )
             }            
             
             if displayedEntries.isEmpty {
@@ -891,6 +985,29 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
             .buttonStyle(.plain)
             .disabled(isCovered)
         }
+
+        // Кнопка информации о файле или папке
+        
+        Button {
+            showEntryInfo(entry)
+        } label: {
+            Image(systemName: "info.circle")
+                .font(.system(size: 19))
+                .foregroundStyle(.cyan.opacity(0.85))
+                .frame(width: 36, height: 40)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sheet(item: $selectedEntryInfo) { info in
+            ArchiveInfoView(
+                info: nil,
+                entryInfo: info,
+                isEnglish: isEnglish
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .preferredColorScheme(.dark)
+        }
     }
     .padding(.vertical, 2)
 }
@@ -1198,6 +1315,150 @@ private func openImage(_ entry: ArchiveEntry) {
                 folderCount: folders.count,
                 uncompressedSize: totalUncompressedSize
             )
+
+        } catch {
+            showError(error)
+        }
+    }
+
+    private func showEntryInfo(_ selectedEntry: ArchiveEntry) {
+        guard let archiveURL else { return }
+
+        do {
+            var archiveItems: [
+                (path: String, isDirectory: Bool, size: UInt64)
+            ] = []
+
+            if isRARArchive || isISOArchive {
+
+                let reader = ArchiveReader()
+                let allEntries = try reader.entries(at: archiveURL)
+
+                for item in allEntries {
+                    let path = item.path
+                        .replacingOccurrences(of: "\\", with: "/")
+                        .trimmingCharacters(
+                            in: CharacterSet(charactersIn: "/")
+                        )
+
+                    guard !path.isEmpty else { continue }
+
+                    let isDirectory =
+                        String(describing: item.fileType)
+                            .lowercased()
+                            .contains("directory")
+
+                    archiveItems.append((
+                        path: path,
+                        isDirectory: isDirectory,
+                        size: isDirectory ? 0 : UInt64(item.size)
+                    ))
+                }
+
+            } else {
+
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                for item in archive {
+                    let path = item.path
+                        .replacingOccurrences(of: "\\", with: "/")
+                        .trimmingCharacters(
+                            in: CharacterSet(charactersIn: "/")
+                        )
+
+                    guard !path.isEmpty else { continue }
+
+                    let isDirectory = item.type == .directory
+
+                    archiveItems.append((
+                        path: path,
+                        isDirectory: isDirectory,
+                        size: isDirectory ? 0 : item.uncompressedSize
+                    ))
+                }
+            }
+
+            let selectedPath = selectedEntry.path
+                .replacingOccurrences(of: "\\", with: "/")
+                .trimmingCharacters(
+                    in: CharacterSet(charactersIn: "/")
+                )
+
+            if selectedEntry.isDirectory {
+
+                let prefix = selectedPath + "/"
+
+                let descendants = archiveItems.filter {
+                    $0.path.hasPrefix(prefix)
+                }
+
+                var folders = Set<String>()
+                var fileCount = 0
+                var totalSize: UInt64 = 0
+
+                for item in descendants {
+
+                    let relativePath = String(
+                        item.path.dropFirst(prefix.count)
+                    )
+
+                    let components = relativePath.split(separator: "/")
+
+                    if item.isDirectory {
+                        folders.insert(item.path)
+                    }
+
+                    if components.count > 1 {
+                        for index in 1..<components.count {
+                            let folderPath = prefix +
+                                components.prefix(index).joined(separator: "/")
+
+                            folders.insert(folderPath)
+                        }
+                    }
+
+                    if !item.isDirectory {
+                        fileCount += 1
+                        totalSize += item.size
+                    }
+                }
+
+                selectedEntryInfo = EntryInfo(
+                    name: selectedEntry.name,
+                    path: selectedEntry.path,
+                    fileType: tr("Папка", "Folder"),
+                    isDirectory: true,
+                    sizeInBytes: totalSize,
+                    fileCount: fileCount,
+                    folderCount: folders.count
+                )
+
+            } else {
+
+                let matchingItem = archiveItems.first {
+                    $0.path == selectedPath
+                }
+
+                let size = matchingItem?.size
+                    ?? UInt64(max(0, selectedEntry.sizeInBytes))
+
+                let fileType = selectedEntry.fileExtension.isEmpty
+                    ? tr("Файл", "File")
+                    : selectedEntry.fileExtension.uppercased()
+
+                selectedEntryInfo = EntryInfo(
+                    name: selectedEntry.name,
+                    path: selectedEntry.path,
+                    fileType: fileType,
+                    isDirectory: false,
+                    sizeInBytes: size,
+                    fileCount: 0,
+                    folderCount: 0
+                )
+            }
 
         } catch {
             showError(error)
@@ -2631,6 +2892,19 @@ private struct ArchiveHTMLView: UIViewRepresentable {
     }
 }
 
+struct EntryInfo: Identifiable {
+    let id = UUID()
+
+    let name: String
+    let path: String
+    let fileType: String
+    let isDirectory: Bool
+
+    let sizeInBytes: UInt64
+    let fileCount: Int
+    let folderCount: Int
+}
+
 private struct ArchiveInfo: Identifiable {
     let id = UUID()
 
@@ -2640,9 +2914,11 @@ private struct ArchiveInfo: Identifiable {
     let uncompressedSize: UInt64
 }
 
+
 private struct ArchiveInfoView: View {
 
-    let info: ArchiveInfo
+    let info: ArchiveInfo?
+    let entryInfo: EntryInfo?
     let isEnglish: Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -2653,7 +2929,7 @@ private struct ArchiveInfoView: View {
 
     private func formatSize(_ bytes: UInt64) -> String {
         ByteCountFormatter.string(
-            fromByteCount: Int64(bytes),
+            fromByteCount: Int64(clamping: bytes),
             countStyle: .file
         )
     }
@@ -2667,7 +2943,9 @@ private struct ArchiveInfoView: View {
 
                 HStack {
                     Label(
-                        tr("Информация об архиве", "Archive information"),
+                        entryInfo != nil
+                            ? tr("Информация об элементе", "Item information")
+                            : tr("Информация об архиве", "Archive information"),
                         systemImage: "info.circle.fill"
                     )
                     .font(.headline)
@@ -2687,29 +2965,81 @@ private struct ArchiveInfoView: View {
 
                 VStack(spacing: 18) {
 
-                    infoRow(
-                        tr("Размер архива", "Archive size"),
-                        value: formatSize(info.archiveSize),
-                        icon: "doc.zipper"
-                    )
+                    if let entryInfo {
 
-                    infoRow(
-                        tr("Всего файлов", "Total files"),
-                        value: "\(info.fileCount)",
-                        icon: "doc"
-                    )
+                        infoRow(
+                            tr("Название", "Name"),
+                            value: entryInfo.name,
+                            icon: entryInfo.isDirectory ? "folder" : "doc"
+                        )
 
-                    infoRow(
-                        tr("Количество папок", "Total folders"),
-                        value: "\(info.folderCount)",
-                        icon: "folder"
-                    )
+                        infoRow(
+                            tr("Путь в архиве", "Archive path"),
+                            value: entryInfo.path,
+                            icon: "folder.badge.gearshape"
+                        )
 
-                    infoRow(
-                        tr("Размер содержимого", "Uncompressed size"),
-                        value: formatSize(info.uncompressedSize),
-                        icon: "externaldrive"
-                    )
+                        infoRow(
+                            tr("Тип", "Type"),
+                            value: entryInfo.fileType,
+                            icon: "doc.text"
+                        )
+
+                        if entryInfo.isDirectory {
+
+                            infoRow(
+                                tr("Файлов", "Files"),
+                                value: "\(entryInfo.fileCount)",
+                                icon: "doc"
+                            )
+
+                            infoRow(
+                                tr("Вложенных папок", "Subfolders"),
+                                value: "\(entryInfo.folderCount)",
+                                icon: "folder"
+                            )
+
+                            infoRow(
+                                tr("Общий размер", "Total size"),
+                                value: formatSize(entryInfo.sizeInBytes),
+                                icon: "externaldrive"
+                            )
+
+                        } else {
+
+                            infoRow(
+                                tr("Размер файла", "File size"),
+                                value: formatSize(entryInfo.sizeInBytes),
+                                icon: "externaldrive"
+                            )
+                        }
+
+                    } else if let info {
+
+                        infoRow(
+                            tr("Размер архива", "Archive size"),
+                            value: formatSize(info.archiveSize),
+                            icon: "doc.zipper"
+                        )
+
+                        infoRow(
+                            tr("Всего файлов", "Total files"),
+                            value: "\(info.fileCount)",
+                            icon: "doc"
+                        )
+
+                        infoRow(
+                            tr("Количество папок", "Total folders"),
+                            value: "\(info.folderCount)",
+                            icon: "folder"
+                        )
+
+                        infoRow(
+                            tr("Размер содержимого", "Uncompressed size"),
+                            value: formatSize(info.uncompressedSize),
+                            icon: "externaldrive"
+                        )
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -2739,6 +3069,8 @@ private struct ArchiveInfoView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .monospacedDigit()
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
         }
     }
 }

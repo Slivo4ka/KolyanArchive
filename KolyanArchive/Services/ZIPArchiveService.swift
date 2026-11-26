@@ -111,7 +111,8 @@ struct ZIPArchiveService {
                         fromByteCount: Int64(entry.uncompressedSize),
                         countStyle: .file
                     ),
-                    isDirectory: false
+                    isDirectory: false,
+                    sizeInBytes: Int64(entry.uncompressedSize)
                 )
             }
         }
@@ -182,7 +183,8 @@ struct ZIPArchiveService {
                         fromByteCount: Int64(entry.uncompressedSize),
                         countStyle: .file
                     ),
-                    isDirectory: false
+                    isDirectory: false,
+                    sizeInBytes: Int64(entry.uncompressedSize)
                 )
             }
         }

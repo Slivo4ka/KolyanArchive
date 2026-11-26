@@ -64,7 +64,8 @@ struct RARArchiveService {
                         fromByteCount: Int64(item.size),
                         countStyle: .file
                     ),
-                    isDirectory: false
+                    isDirectory: false,
+                    sizeInBytes: Int64(item.size)
                 )
             }
         }
@@ -135,7 +136,8 @@ struct RARArchiveService {
                         fromByteCount: Int64(item.size),
                         countStyle: .file
                     ),
-                isDirectory: isDirectory
+                isDirectory: isDirectory,
+                sizeInBytes: isDirectory ? 0 : Int64(item.size)
             )
         }
 
