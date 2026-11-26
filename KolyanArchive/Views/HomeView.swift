@@ -2845,6 +2845,10 @@ private struct ArchiveOfficeView: UIViewControllerRepresentable {
 
         let controller = QLPreviewController()
         let coordinator = context.coordinator
+        controller.overrideUserInterfaceStyle = .dark
+        controller.view.backgroundColor = .black
+        controller.view.isOpaque = true
+        controller.view.tintColor = .white
 
         do {
             let fileURL: URL
