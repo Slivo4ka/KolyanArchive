@@ -6,6 +6,7 @@ import ZIPFoundation
 import LibArchive
 import WebKit
 import PDFKit
+import QuickLook
 
 struct HomeView: View {
 
@@ -638,7 +639,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
     let previewableFormats = [
         "jpg", "jpeg", "png", "gif",
         "heic", "webp", "pdf", "txt",
-        "rtf", "html", "htm"
+        "rtf", "html", "htm", "docx", "xlsx"
     ]
 
     let isPreviewable = previewableFormats.contains(entry.fileExtension)
@@ -781,7 +782,7 @@ private func archiveEntryRow(_ entry: ArchiveEntry) -> some View {
 private func openImage(_ entry: ArchiveEntry) {
     guard let archiveURL else { return }
 
-    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt", "rtf", "html", "htm"]
+    let supportedFormats = ["jpg", "jpeg", "png", "gif", "heic", "webp", "pdf", "txt", "rtf", "html", "htm", "docx", "xlsx"]
 
     let images = displayedEntries
         .filter {
@@ -1394,7 +1395,13 @@ struct ImageGalleryView: View {
                             isEnglish: isEnglish
                         )
                     } else if ["html", "htm"].contains(items[selectedIndex].fileExtension) {
-                        ArchiveHTMLView(
+    ArchiveHTMLView(
+        archiveURL: archiveURL,
+        item: items[selectedIndex],
+        isEnglish: isEnglish
+    )
+                    } else if ["docx", "xlsx"].contains(items[selectedIndex].fileExtension) {
+                        ArchiveOfficeView(
                             archiveURL: archiveURL,
                             item: items[selectedIndex],
                             isEnglish: isEnglish
@@ -2531,6 +2538,151 @@ struct ExtractionNameTextField: UIViewRepresentable {
 
         @objc func textChanged(_ textField: UITextField) {
             parent.text = textField.text ?? ""
+        }
+    }
+}
+
+// MARK: - Office Preview
+
+private struct ArchiveOfficeView: UIViewControllerRepresentable {
+
+    let archiveURL: URL
+    let item: ArchiveImage
+    let isEnglish: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIViewController(
+        context: Context
+    ) -> QLPreviewController {
+
+        let controller = QLPreviewController()
+        let coordinator = context.coordinator
+
+        do {
+            let fileURL: URL
+
+            if archiveURL.pathExtension.lowercased() == "zip" {
+
+                let directoryURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(
+                        "KolyanOffice-\(UUID().uuidString)",
+                        isDirectory: true
+                    )
+
+                try FileManager.default.createDirectory(
+                    at: directoryURL,
+                    withIntermediateDirectories: true
+                )
+
+                let destinationURL = directoryURL.appendingPathComponent(
+                    URL(fileURLWithPath: item.path).lastPathComponent
+                )
+
+                let archive = try Archive(
+                    url: archiveURL,
+                    accessMode: .read
+                )
+
+                guard let entry = archive[item.path] else {
+                    throw NSError(
+                        domain: "ArchiveOffice",
+                        code: 1
+                    )
+                }
+
+                _ = try archive.extract(
+                    entry,
+                    to: destinationURL
+                )
+
+                fileURL = destinationURL
+                coordinator.cleanupURLs.append(directoryURL)
+
+            } else {
+
+                fileURL = try RARArchiveService().extractPreviewFile(
+                    archiveURL: archiveURL,
+                    path: item.path
+                )
+
+                coordinator.cleanupURLs.append(fileURL)
+            }
+
+            coordinator.previewURL = fileURL
+
+        } catch {
+
+            let directoryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "KolyanOfficeError-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+
+            do {
+                try FileManager.default.createDirectory(
+                    at: directoryURL,
+                    withIntermediateDirectories: true
+                )
+
+                let errorURL = directoryURL.appendingPathComponent(
+                    "Preview-Error.txt"
+                )
+
+                let message = isEnglish
+                    ? "Unable to open this Office document."
+                    : "Не удалось открыть документ Office."
+
+                try message.write(
+                    to: errorURL,
+                    atomically: true,
+                    encoding: .utf8
+                )
+
+                coordinator.previewURL = errorURL
+                coordinator.cleanupURLs.append(directoryURL)
+
+            } catch {
+                coordinator.previewURL = nil
+            }
+        }
+
+        controller.dataSource = coordinator
+        controller.reloadData()
+
+        return controller
+    }
+
+    func updateUIViewController(
+        _ controller: QLPreviewController,
+        context: Context
+    ) {
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+
+        var previewURL: URL?
+        var cleanupURLs: [URL] = []
+
+        func numberOfPreviewItems(
+            in controller: QLPreviewController
+        ) -> Int {
+            return previewURL == nil ? 0 : 1
+        }
+
+        func previewController(
+            _ controller: QLPreviewController,
+            previewItemAt index: Int
+        ) -> QLPreviewItem {
+            return previewURL! as NSURL
+        }
+
+        deinit {
+            for url in cleanupURLs {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 }
