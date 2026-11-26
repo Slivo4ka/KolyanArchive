@@ -9,6 +9,7 @@ import PDFKit
 import QuickLook
 
 struct HomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var isImporterPresented = false
     @State private var selectedArchiveFormat = "zip"
@@ -167,8 +168,22 @@ var body: some View {
                 .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
         }
-    }
+        }
     .tint(.white)
+    .onChange(of: scenePhase) { _, newPhase in
+        if newPhase == .active {
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + 0.2
+            ) {
+                UIApplication.shared.sendAction(
+                    #selector(UIResponder.resignFirstResponder),
+                    to: nil,
+                    from: nil,
+                    for: nil
+                )
+            }
+        }
+    }
 }
 
     private var archiveFolderDefaultName: String {
