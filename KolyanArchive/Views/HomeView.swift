@@ -63,6 +63,15 @@ struct HomeView: View {
 
     @State private var errorMessage = ""
     @State private var showingError = false
+    
+    // Создание ZIP-архива
+    
+    @State private var isZIPSourceImporterPresented = false
+    @State private var isZIPDestinationImporterPresented = false
+    @State private var selectedZIPFiles: [URL] = []
+    @State private var isNamingZIP = false
+    @State private var zipArchiveName = ""
+    @State private var zipNameFocusRequest = UUID()
 
 
     private let archiveService = ZIPArchiveService()
@@ -192,6 +201,37 @@ var body: some View {
         } message: {
             Text(errorMessage)
         }
+
+        .fileImporter(
+            isPresented: $isZIPSourceImporterPresented,
+            allowedContentTypes: [.item, .folder],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard !urls.isEmpty else { return }
+                selectedZIPFiles = urls
+                isNamingZIP = true
+
+            case .failure(let error):
+                showError(error)
+            }
+        }
+
+        .fileImporter(
+            isPresented: $isZIPDestinationImporterPresented,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let destinationURL = urls.first else { return }
+                createZIPArchive(at: destinationURL)
+
+            case .failure(let error):
+                showError(error)
+            }
+        }
         
         .fullScreenCover(item: $activeGallery) { gallery in
             ImageGalleryView(
@@ -222,6 +262,12 @@ var body: some View {
             }
         ) {
             extractionNameSheet
+                .presentationDetents([.height(290)])
+                .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $isNamingZIP) {
+            zipNameSheet
                 .presentationDetents([.height(290)])
                 .presentationDragIndicator(.visible)
                 .preferredColorScheme(.dark)
@@ -633,10 +679,7 @@ var body: some View {
                             sortOption = .nameAscending
                         } label: {
                             HStack {
-                                Text(tr("Имя: А–Я", "Name: A–Z"))
-                                .foregroundStyle(
-                                    sortOption == .nameAscending ? Color.cyan : Color.primary
-                                )
+                                Text(tr("Имя: А–Я", "Name: A–Z"))                            
 
                                 Spacer()
 
@@ -651,10 +694,7 @@ var body: some View {
                             sortOption = .nameDescending
                         } label: {
                             HStack {
-                                Text(tr("Имя: Я–А", "Name: Z–A"))
-                                .foregroundStyle(
-                                    sortOption == .nameAscending ? Color.cyan : Color.primary
-                                )
+                                Text(tr("Имя: Я–А", "Name: Z–A"))                                
 
                                 Spacer()
 
@@ -670,10 +710,7 @@ var body: some View {
                         } label: {
                             HStack {
                                 Text(tr("Размер: сначала большие", "Size: largest first"))
-                                .foregroundStyle(
-                                    sortOption == .nameAscending ? Color.cyan : Color.primary
-                                )
-
+                                
                                 Spacer()
 
                                 if sortOption == .sizeDescending {
@@ -688,9 +725,6 @@ var body: some View {
                         } label: {
                             HStack {
                                 Text(tr("Размер: сначала маленькие", "Size: smallest first"))
-                                .foregroundStyle(
-                                    sortOption == .nameAscending ? Color.cyan : Color.primary
-                                )
 
                                 Spacer()
 
@@ -1136,49 +1170,71 @@ private func openImage(_ entry: ArchiveEntry) {
     private var featureCards: some View {
         HStack(spacing: 12) {
             featureCard(
-                "ZIP",
+                tr("Создать ZIP", "Create ZIP"),
                 detail: tr(
-                    "Создание и распаковка",
-                    "Create and extract archives"
+                    "Создание ZIP-архивов",
+                    "Create ZIP archives"
                 ),
                 symbol: "doc.zipper"
-            )
+            ) {
+                selectedZIPFiles = []
+                zipArchiveName = ""
+                isZIPSourceImporterPresented = true
+            }
 
             featureCard(
-                "RAR",
+                tr("Создать ISO", "Create ISO"),
                 detail: tr(
-                    "Просмотр содержимого",
-                    "Browse archive contents"
+                    "Создание ISO-образов",
+                    "Create ISO images"
                 ),
-                symbol: "archivebox"
-            )
+                symbol: "opticaldisc"
+            ) {
+                showError(
+                    NSError(
+                        domain: "KolyanArchive",
+                        code: 1,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: tr(
+                                "Создание ISO появится в следующем обновлении.",
+                                "ISO creation will be available in a future update."
+                            )
+                        ]
+                    )
+                )
+            }
         }
     }
 
     private func featureCard(
         _ title: String,
         detail: String,
-        symbol: String
+        symbol: String,
+        action: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Image(systemName: symbol)
-                .font(.title2)
-                .foregroundStyle(.cyan)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 9) {
+                Image(systemName: symbol)
+                    .font(.title2)
+                    .foregroundStyle(.cyan)
 
-            Text(title)
-                .font(.headline)
+                Text(title)
+                    .font(.headline)
 
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.55))
-                .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 105, alignment: .leading)
+            .padding(15)
+            .background(
+                Color.white.opacity(0.055),
+                in: RoundedRectangle(cornerRadius: 17)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 17))
         }
-        .frame(maxWidth: .infinity, minHeight: 105, alignment: .leading)
-        .padding(15)
-        .background(
-            Color.white.opacity(0.055),
-            in: RoundedRectangle(cornerRadius: 17)
-        )
+        .buttonStyle(.plain)
     }
 
     // MARK: - Import archive
@@ -1684,6 +1740,59 @@ private func closeArchive() {
     )
 }
 
+private func createZIPArchive(at destinationFolderURL: URL) {
+
+    let hasAccess = destinationFolderURL
+        .startAccessingSecurityScopedResource()
+
+    defer {
+        if hasAccess {
+            destinationFolderURL.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    let cleanName = zipArchiveName
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !cleanName.isEmpty,
+          cleanName != ".",
+          cleanName != "..",
+          !cleanName.contains("/"),
+          !cleanName.contains("\\"),
+          !cleanName.contains(":"),
+          !cleanName.contains("\0") else {
+        showError(
+            ArchiveServiceError.unsafeArchivePath(cleanName)
+        )
+        return
+    }
+
+    let fileName = cleanName.lowercased().hasSuffix(".zip")
+        ? cleanName
+        : cleanName + ".zip"
+
+    let outputURL = destinationFolderURL
+        .appendingPathComponent(fileName)
+
+    do {
+        try archiveService.createZIP(
+            from: selectedZIPFiles,
+            at: outputURL
+        )
+
+        selectedZIPFiles = []
+        zipArchiveName = ""
+
+        message = tr(
+            "ZIP-архив успешно создан: \(fileName)",
+            "ZIP archive successfully created: \(fileName)"
+        )
+
+    } catch {
+        showError(error)
+    }
+}
+
 private var extractionNameSheet: some View {
     ZStack {
         Color(red: 0.035, green: 0.043, blue: 0.075)
@@ -1740,6 +1849,83 @@ private var extractionNameSheet: some View {
                     extractionFolderName = cleanedName
                     shouldChooseDestinationAfterNaming = true
                     isNamingExtractionFolder = false
+                } label: {
+                    Text(tr("Продолжить", "Continue"))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            LinearGradient(
+                                colors: [.indigo, .blue],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 13)
+                        )
+                }
+            }
+        }
+        .padding(24)
+    }
+}
+
+private var zipNameSheet: some View {
+    ZStack {
+        Color(red: 0.035, green: 0.043, blue: 0.075)
+            .ignoresSafeArea()
+
+        VStack(alignment: .leading, spacing: 20) {
+            Text(tr("Создание ZIP-архива", "Create ZIP archive"))
+                .font(.title2.bold())
+                .foregroundStyle(.white)
+
+            Text(
+                tr(
+                    "Введи название будущего архива.",
+                    "Enter a name for the new archive."
+                )
+            )
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.6))
+
+            ExtractionNameTextField(
+                text: $zipArchiveName,
+                placeholder: tr("Название архива", "Archive name"),
+                focusRequest: zipNameFocusRequest
+            )
+            .frame(height: 22)
+            .padding(15)
+            .background(
+                Color.white.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 13)
+            )
+
+            HStack(spacing: 12) {
+                Button {
+                    isNamingZIP = false
+                    selectedZIPFiles = []
+                } label: {
+                    Text(tr("Отмена", "Cancel"))
+                        .font(.headline)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            Color.white.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 13)
+                        )
+                }
+
+                Button {
+                    let cleanedName = zipArchiveName
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    guard !cleanedName.isEmpty else { return }
+
+                    zipArchiveName = cleanedName
+                    isNamingZIP = false
+                    isZIPDestinationImporterPresented = true
                 } label: {
                     Text(tr("Продолжить", "Continue"))
                         .font(.headline)

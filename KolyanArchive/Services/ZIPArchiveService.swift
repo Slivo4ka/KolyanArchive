@@ -425,13 +425,69 @@ struct ZIPArchiveService {
     // MARK: - Create ZIP
 
     func createZIP(
-        from sourceURL: URL,
+        from sourceURLs: [URL],
         at destinationURL: URL
     ) throws {
-        try FileManager.default.zipItem(
-            at: sourceURL,
+
+        let fileManager = FileManager.default
+
+        guard !sourceURLs.isEmpty else {
+            throw ArchiveServiceError.noSelectedEntries
+        }
+
+        guard !fileManager.fileExists(
+            atPath: destinationURL.path
+        ) else {
+            throw ArchiveServiceError.destinationFileExists(
+                destinationURL.lastPathComponent
+            )
+        }
+
+        let temporaryFolder = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                "KolyanArchive-\(UUID().uuidString)",
+                isDirectory: true
+            )
+
+        try fileManager.createDirectory(
+            at: temporaryFolder,
+            withIntermediateDirectories: true
+        )
+
+        defer {
+            try? fileManager.removeItem(at: temporaryFolder)
+        }
+
+        for sourceURL in sourceURLs {
+            let hasAccess = sourceURL.startAccessingSecurityScopedResource()
+
+            defer {
+                if hasAccess {
+                    sourceURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let fileName = sourceURL.lastPathComponent
+
+            let targetURL = temporaryFolder
+                .appendingPathComponent(fileName)
+
+            guard !fileManager.fileExists(
+                atPath: targetURL.path
+            ) else {
+                throw ArchiveServiceError.destinationFileExists(fileName)
+            }
+
+            try fileManager.copyItem(
+                at: sourceURL,
+                to: targetURL
+            )
+        }
+
+        try fileManager.zipItem(
+            at: temporaryFolder,
             to: destinationURL,
-            shouldKeepParent: true,
+            shouldKeepParent: false,
             compressionMethod: .deflate
         )
     }
