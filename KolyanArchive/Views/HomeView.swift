@@ -2058,6 +2058,8 @@ private func beginExtraction(
                         "Архив распакован в папку \(extractedFolderName).",
                         "Archive extracted into \(extractedFolderName)."
                     )
+                    
+                    closeArchive()
                 }
 
             case .failure(let error):
