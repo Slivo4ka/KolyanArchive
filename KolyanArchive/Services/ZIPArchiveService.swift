@@ -211,10 +211,12 @@ struct ZIPArchiveService {
 
     // MARK: - Full extraction
 
+    
     func extract(
         archiveURL: URL,
         to destinationURL: URL,
-        folderName: String
+        folderName: String,
+        progress: Progress? = nil
     ) throws -> URL {
 
         try validateArchive(archiveURL)
@@ -230,7 +232,18 @@ struct ZIPArchiveService {
         )
 
         do {
-            for entry in archive {
+            let entries = Array(archive)
+
+            let totalUnitCount = entries.reduce(Int64(0)) {
+                $0 + max(0, archive.totalUnitCountForReading($1))
+            }
+
+            if let progress {
+                progress.totalUnitCount = max(1, totalUnitCount)
+                progress.completedUnitCount = 0
+            }
+
+            for entry in entries {
                 let path = try normalizedPath(entry.path)
 
                 guard entry.type != .symlink else {
@@ -259,7 +272,29 @@ struct ZIPArchiveService {
                         throw ArchiveServiceError.destinationFileExists(path)
                     }
 
-                    try archive.extract(entry, to: target)
+                    let entryTotal = max(
+                        0,
+                        archive.totalUnitCountForReading(entry)
+                    )
+
+                    let entryProgress = Progress(
+                        totalUnitCount: max(1, entryTotal)
+                    )
+
+                    if let progress, entryTotal > 0 {
+                        progress.addChild(
+                            entryProgress,
+                            withPendingUnitCount: entryTotal
+                        )
+                    }
+
+                    try archive.extract(
+                        entry,
+                        to: target,
+                        progress: progress != nil && entryTotal > 0
+                            ? entryProgress
+                            : nil
+                    )
                 }
             }
 
@@ -277,7 +312,8 @@ struct ZIPArchiveService {
         archiveURL: URL,
         selectedPaths: Set<String>,
         to destinationURL: URL,
-        folderName: String
+        folderName: String,
+        progress: Progress? = nil
     ) throws -> URL {
 
         try validateArchive(archiveURL)
@@ -321,8 +357,6 @@ struct ZIPArchiveService {
             }
         }
 
-        // Убираем вложенные выборы, если их родительская папка
-        // уже выбрана целиком.
         let effectiveSelections = selections.filter { selected in
             !selectedFolders.contains { folder in
                 folder != selected &&
@@ -381,6 +415,18 @@ struct ZIPArchiveService {
         do {
             var extractedPaths = Set<String>()
 
+            let totalSize = plannedEntries.reduce(Int64(0)) {
+                $0 + max(
+                    0,
+                    archive.totalUnitCountForReading($1.entry)
+                )
+            }
+
+            if let progress {
+                progress.totalUnitCount = max(1, totalSize)
+                progress.completedUnitCount = 0
+            }
+
             for item in plannedEntries {
                 let path = try normalizedPath(item.path)
 
@@ -410,7 +456,29 @@ struct ZIPArchiveService {
                         throw ArchiveServiceError.destinationFileExists(path)
                     }
 
-                    try archive.extract(item.entry, to: target)
+                    let entryTotal = max(
+                        0,
+                        archive.totalUnitCountForReading(item.entry)
+                    )
+
+                    let entryProgress = Progress(
+                        totalUnitCount: max(1, entryTotal)
+                    )
+
+                    if let progress, entryTotal > 0 {
+                        progress.addChild(
+                            entryProgress,
+                            withPendingUnitCount: entryTotal
+                        )
+                    }
+
+                    try archive.extract(
+                        item.entry,
+                        to: target,
+                        progress: progress != nil && entryTotal > 0
+                            ? entryProgress
+                            : nil
+                    )
                 }
             }
 
@@ -466,7 +534,8 @@ struct ZIPArchiveService {
     
     func createZIP(
         from sourceURLs: [URL],
-        at destinationURL: URL
+        at destinationURL: URL,
+        progress: Progress? = nil
     ) throws -> URL {
 
         let fileManager = FileManager.default
@@ -546,7 +615,8 @@ struct ZIPArchiveService {
             at: temporaryFolder,
             to: finalDestinationURL,
             shouldKeepParent: false,
-            compressionMethod: .deflate
+            compressionMethod: .deflate,
+            progress: progress 
         )
 
         return finalDestinationURL

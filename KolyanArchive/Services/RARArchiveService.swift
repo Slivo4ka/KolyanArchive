@@ -157,16 +157,19 @@ struct RARArchiveService {
     }
 
     // MARK: - Full extraction
-
+    
     func extract(
         archiveURL: URL,
         to destinationURL: URL,
-        folderName: String
+        folderName: String,
+        progress: Progress? = nil
     ) throws -> URL {
 
         try validateArchive(archiveURL)
 
         let entries = try reader.entries(at: archiveURL)
+
+        var totalSize: Int64 = 0
 
         for entry in entries {
             let path = try normalizedPath(entry.path)
@@ -184,36 +187,125 @@ struct RARArchiveService {
             guard isDirectory || isRegularFile else {
                 throw ArchiveServiceError.unsafeArchivePath(path)
             }
+
+            if isRegularFile {
+                totalSize += max(0, entry.size)
+            }
         }
+
+        progress?.totalUnitCount = max(1, totalSize)
+        progress?.completedUnitCount = 0
 
         let outputFolder = try createUniqueArchiveFolder(
             folderName: folderName,
             inside: destinationURL
         )
 
+        var fileHandles: [String: FileHandle] = [:]
+
         do {
-            try reader.extract(
-                archiveURL,
-                to: outputFolder,
-                options: [.safeWrites, .noOverwrite],
-                permissionMode: .normalized
+            try reader.readDataBlocks(
+                in: archiveURL,
+                selecting: { entry in
+
+                    let path = try normalizedPath(entry.path)
+                    let type = String(describing: entry.fileType).lowercased()
+
+                    let targetURL = try safeTargetURL(
+                        path,
+                        inside: outputFolder
+                    )
+
+                    if type.contains("directory") {
+                        try FileManager.default.createDirectory(
+                            at: targetURL,
+                            withIntermediateDirectories: true
+                        )
+
+                        return .skip
+                    }
+
+                    let parentURL = targetURL.deletingLastPathComponent()
+
+                    try FileManager.default.createDirectory(
+                        at: parentURL,
+                        withIntermediateDirectories: true
+                    )
+
+                    guard !FileManager.default.fileExists(
+                        atPath: targetURL.path
+                    ) else {
+                        throw ArchiveServiceError.destinationFileExists(path)
+                    }
+
+                    guard FileManager.default.createFile(
+                        atPath: targetURL.path,
+                        contents: nil
+                    ) else {
+                        throw ArchiveServiceError.destinationFileExists(path)
+                    }
+
+                    fileHandles[path] = try FileHandle(
+                        forWritingTo: targetURL
+                    )
+
+                    return .read
+                },
+                didFinishEntry: { entry, _ in
+
+                    let path = try normalizedPath(entry.path)
+
+                    if let handle = fileHandles.removeValue(forKey: path) {
+                        try handle.close()
+                    }
+                },
+                { entry, block in
+
+                    let path = try normalizedPath(entry.path)
+
+                    guard let handle = fileHandles[path] else {
+                        throw ArchiveServiceError.noSelectedEntries
+                    }
+
+                    guard block.offset >= 0 else {
+                        throw ArchiveServiceError.unsafeArchivePath(path)
+                    }
+
+                    try handle.seek(toOffset: UInt64(block.offset))
+                    try handle.write(contentsOf: block.data)
+
+                    progress?.completedUnitCount += Int64(block.data.count)
+
+                    return .continueReading
+                }
             )
+
+            if totalSize == 0 {
+                progress?.completedUnitCount = 1
+            } else {
+                progress?.completedUnitCount = totalSize
+            }
 
             return outputFolder
 
         } catch {
+            for handle in fileHandles.values {
+                try? handle.close()
+            }
+
             try? FileManager.default.removeItem(at: outputFolder)
             throw error
         }
     }
 
     // MARK: - Selected extraction
-
+    
     func extractSelected(
         archiveURL: URL,
         selectedPaths: Set<String>,
         to destinationURL: URL,
-        folderName: String
+        folderName: String,
+        progress: Progress? = nil
     ) throws -> URL {
 
         try validateArchive(archiveURL)
@@ -224,6 +316,8 @@ struct RARArchiveService {
 
         let entries = try reader.entries(at: archiveURL)
 
+        var archivePaths: [String] = []
+
         for entry in entries {
             let path = try normalizedPath(entry.path)
 
@@ -240,24 +334,20 @@ struct RARArchiveService {
             guard isDirectory || isRegularFile else {
                 throw ArchiveServiceError.unsafeArchivePath(path)
             }
+
+            archivePaths.append(path)
         }
 
         let normalizedSelections = try Set(
             selectedPaths.map { try normalizedPath($0) }
         )
 
-        let archivePaths = try entries.map {
-            try normalizedPath($0.path)
-        }
-
         var selectedFolders = Set<String>()
 
         for selected in normalizedSelections {
-            let isFolder = archivePaths.contains {
+            if archivePaths.contains(where: {
                 $0.hasPrefix(selected + "/")
-            }
-
-            if isFolder {
+            }) {
                 selectedFolders.insert(selected)
             }
         }
@@ -279,24 +369,24 @@ struct RARArchiveService {
 
             if selectedFolders.contains(selected) {
 
-                let folderName = URL(
+                let name = URL(
                     fileURLWithPath: selected
                 ).lastPathComponent
 
                 plannedItems.append((
                     source: selected,
-                    target: folderName
+                    target: name
                 ))
 
             } else if archivePaths.contains(selected) {
 
-                let fileName = URL(
+                let name = URL(
                     fileURLWithPath: selected
                 ).lastPathComponent
 
                 plannedItems.append((
                     source: selected,
-                    target: fileName
+                    target: name
                 ))
             }
         }
@@ -305,85 +395,162 @@ struct RARArchiveService {
             throw ArchiveServiceError.noSelectedEntries
         }
 
+        var targetPaths: [String: String] = [:]
+
+        for path in archivePaths {
+
+            for item in plannedItems {
+
+                if path == item.source {
+                    targetPaths[path] = item.target
+                    break
+                }
+
+                if selectedFolders.contains(item.source),
+                   path.hasPrefix(item.source + "/") {
+
+                    let suffix = String(
+                        path.dropFirst(item.source.count + 1)
+                    )
+
+                    targetPaths[path] = item.target + "/" + suffix
+                    break
+                }
+            }
+        }
+
+        let totalSize = entries.reduce(Int64(0)) { total, entry in
+            guard let path = try? normalizedPath(entry.path),
+                  targetPaths[path] != nil,
+                  String(describing: entry.fileType)
+                    .lowercased()
+                    .contains("regular") else {
+                return total
+            }
+
+            return total + max(0, entry.size)
+        }
+
+        progress?.totalUnitCount = max(1, totalSize)
+        progress?.completedUnitCount = 0
+
         let outputFolder = try createUniqueArchiveFolder(
             folderName: folderName,
             inside: destinationURL
         )
 
-        let temporaryFolder = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        var fileHandles: [String: FileHandle] = [:]
 
         do {
-            try FileManager.default.createDirectory(
-                at: temporaryFolder,
-                withIntermediateDirectories: true
+            try reader.readDataBlocks(
+                in: archiveURL,
+                selecting: { entry in
+
+                    let sourcePath = try normalizedPath(entry.path)
+
+                    guard let targetPath = targetPaths[sourcePath] else {
+                        return .skip
+                    }
+
+                    let type = String(
+                        describing: entry.fileType
+                    ).lowercased()
+
+                    let targetURL = try safeTargetURL(
+                        targetPath,
+                        inside: outputFolder
+                    )
+
+                    if type.contains("directory") {
+
+                        try FileManager.default.createDirectory(
+                            at: targetURL,
+                            withIntermediateDirectories: true
+                        )
+
+                        return .skip
+                    }
+
+                    let parentURL = targetURL.deletingLastPathComponent()
+
+                    try FileManager.default.createDirectory(
+                        at: parentURL,
+                        withIntermediateDirectories: true
+                    )
+
+                    guard !FileManager.default.fileExists(
+                        atPath: targetURL.path
+                    ) else {
+                        throw ArchiveServiceError.destinationFileExists(
+                            targetPath
+                        )
+                    }
+
+                    guard FileManager.default.createFile(
+                        atPath: targetURL.path,
+                        contents: nil
+                    ) else {
+                        throw ArchiveServiceError.destinationFileExists(
+                            targetPath
+                        )
+                    }
+
+                    fileHandles[sourcePath] = try FileHandle(
+                        forWritingTo: targetURL
+                    )
+
+                    return .read
+                },
+                didFinishEntry: { entry, _ in
+
+                    let sourcePath = try normalizedPath(entry.path)
+
+                    if let handle = fileHandles.removeValue(
+                        forKey: sourcePath
+                    ) {
+                        try handle.close()
+                    }
+                },
+                { entry, block in
+
+                    let sourcePath = try normalizedPath(entry.path)
+
+                    guard let handle = fileHandles[sourcePath] else {
+                        throw ArchiveServiceError.noSelectedEntries
+                    }
+
+                    guard block.offset >= 0 else {
+                        throw ArchiveServiceError.unsafeArchivePath(
+                            sourcePath
+                        )
+                    }
+
+                    try handle.seek(toOffset: UInt64(block.offset))
+                    try handle.write(contentsOf: block.data)
+
+                    progress?.completedUnitCount +=
+                        Int64(block.data.count)
+
+                    return .continueReading
+                }
             )
 
-            defer {
-                try? FileManager.default.removeItem(at: temporaryFolder)
-            }
-
-            // LibArchive безопасно распаковывает архив во временную папку.
-            try reader.extract(
-                archiveURL,
-                to: temporaryFolder,
-                options: [.safeWrites, .noOverwrite],
-                permissionMode: .normalized
-            )
-
-            var extractedPaths = Set<String>()
-
-            for item in plannedItems {
-
-                let sourcePath = try normalizedPath(item.source)
-                let targetPath = try normalizedPath(item.target)
-
-                guard extractedPaths.insert(
-                    targetPath.lowercased()
-                ).inserted else {
-                    throw ArchiveServiceError.destinationFileExists(
-                        targetPath
-                    )
-                }
-
-                let sourceURL = temporaryFolder
-                    .appendingPathComponent(sourcePath)
-                    .standardizedFileURL
-
-                guard FileManager.default.fileExists(
-                    atPath: sourceURL.path
-                ) else {
-                    throw ArchiveServiceError.noSelectedEntries
-                }
-
-                let targetURL = try safeTargetURL(
-                    targetPath,
-                    inside: outputFolder
-                )
-
-                try FileManager.default.createDirectory(
-                    at: targetURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-
-                guard !FileManager.default.fileExists(
-                    atPath: targetURL.path
-                ) else {
-                    throw ArchiveServiceError.destinationFileExists(
-                        targetPath
-                    )
-                }
-
-                try FileManager.default.copyItem(
-                    at: sourceURL,
-                    to: targetURL
-                )
+            if totalSize == 0 {
+                progress?.completedUnitCount = 1
+            } else {
+                progress?.completedUnitCount = totalSize
             }
 
             return outputFolder
 
         } catch {
+
+            for handle in fileHandles.values {
+                try? handle.close()
+            }
+
             try? FileManager.default.removeItem(at: outputFolder)
+
             throw error
         }
     }

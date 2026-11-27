@@ -62,6 +62,11 @@ struct HomeView: View {
 
     @State private var archiveName = ""
     @State private var archiveURL: URL?
+    
+    @State private var isArchiveOperationInProgress = false
+    @State private var archiveOperationProgress = 0.0
+    @State private var archiveOperationTitle = ""
+    @StateObject private var progressTracker = ArchiveProgressTracker()
 
     @State private var backgroundEnteredAt: Date? = nil
 
@@ -183,6 +188,10 @@ var body: some View {
                         }
                     }
 
+                    if isArchiveOperationInProgress {
+                        archiveProgressView
+                    }
+
                     archiveContents
                     featureCards
 
@@ -292,6 +301,11 @@ var body: some View {
         }
         }
     .tint(.white)
+    .onChange(of: progressTracker.progressValue) { _, newValue in
+        withAnimation(.easeInOut(duration: 0.2)) {
+            archiveOperationProgress = newValue
+        }
+    }
     
     .onChange(of: scenePhase) { _, newPhase in
 
@@ -337,7 +351,52 @@ var body: some View {
             .deletingPathExtension()
             .lastPathComponent
     }
+    
+    private var archiveProgressView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(archiveOperationTitle)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
 
+                Spacer()
+
+                Text("\(Int(archiveOperationProgress * 100))%")
+                    .font(.system(size: 14, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+            }
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(0.10))
+
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.35, green: 0.65, blue: 1.0),
+                                    Color(red: 0.45, green: 0.45, blue: 1.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(
+                            width: geometry.size.width
+                                * max(0, min(1, archiveOperationProgress))
+                        )
+                }
+            }
+            .frame(height: 7)
+        }
+        .padding(16)
+        .background(.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .animation(.easeInOut(duration: 0.2), value: archiveOperationProgress)
+    }
+    
     // MARK: - Header
     
     private var header: some View {
@@ -487,6 +546,7 @@ var body: some View {
                 in: RoundedRectangle(cornerRadius: 16)
             )
         }
+        .disabled(isArchiveOperationInProgress)
         .buttonStyle(.plain)
     }
 
@@ -514,6 +574,7 @@ var body: some View {
                 in: RoundedRectangle(cornerRadius: 16)
             )
         }
+        .disabled(isArchiveOperationInProgress)
         .buttonStyle(.plain)
     }
 
@@ -1392,6 +1453,7 @@ private func openImage(_ entry: ArchiveEntry) {
             )
             .contentShape(RoundedRectangle(cornerRadius: 17))
         }
+        .disabled(isArchiveOperationInProgress)
         .buttonStyle(.plain)
     }
 
@@ -1780,100 +1842,161 @@ private func extractSelectedToFolder(
 
 // MARK: - Unified extraction
 
+
 private func beginExtraction(
     to destinationURL: URL,
     isSelection: Bool
 ) {
 
     guard let archiveURL else { return }
+    guard !isArchiveOperationInProgress else { return }
 
     let hasAccess =
         destinationURL.startAccessingSecurityScopedResource()
 
-    defer {
+    let selectedPathsSnapshot = selectedPaths
+    let folderName = extractionFolderName
+
+    let operationProgress = Progress(totalUnitCount: 1)
+
+    if isSelection {
+        archiveOperationTitle = isISOArchive
+            ? tr("Извлечение выбранных файлов…", "Extracting selected files…")
+            : tr("Распаковка выбранных файлов…", "Extracting selected files…")
+    } else if isISOArchive {
+        archiveOperationTitle = tr(
+            "Извлечение образа…",
+            "Extracting ISO image…"
+        )
+    } else {
+        archiveOperationTitle = tr(
+            "Распаковка архива…",
+            "Extracting archive…"
+        )
+    }
+
+    archiveOperationProgress = 0
+    isArchiveOperationInProgress = true
+
+    progressTracker.observe(operationProgress)
+
+    let isRAR = isRARArchive
+    let isISO = isISOArchive
+
+    let zipService = archiveService
+    let rarService = rarArchiveService
+    let isoService = isoArchiveService
+
+    DispatchQueue.global(qos: .userInitiated).async {
+
+        let result: Result<URL, Error>
+
+        do {
+            let extractionFolder: URL
+
+            if isRAR {
+
+                if isSelection {
+                    extractionFolder = try rarService.extractSelected(
+                        archiveURL: archiveURL,
+                        selectedPaths: selectedPathsSnapshot,
+                        to: destinationURL,
+                        folderName: folderName,
+                        progress: operationProgress
+                    )
+                } else {
+                    extractionFolder = try rarService.extract(
+                        archiveURL: archiveURL,
+                        to: destinationURL,
+                        folderName: folderName,
+                        progress: operationProgress
+                    )
+                }
+
+            } else if isISO {
+
+                if isSelection {
+                    extractionFolder = try isoService.extractSelected(
+                        archiveURL: archiveURL,
+                        selectedPaths: selectedPathsSnapshot,
+                        to: destinationURL,
+                        folderName: folderName,
+                        progress: operationProgress
+                    )
+                } else {
+                    extractionFolder = try isoService.extract(
+                        archiveURL: archiveURL,
+                        to: destinationURL,
+                        folderName: folderName,
+                        progress: operationProgress
+                    )
+                }
+
+            } else {
+
+                if isSelection {
+                    extractionFolder = try zipService.extractSelected(
+                        archiveURL: archiveURL,
+                        selectedPaths: selectedPathsSnapshot,
+                        to: destinationURL,
+                        folderName: folderName,
+                        progress: operationProgress
+                    )
+                } else {
+                    extractionFolder = try zipService.extract(
+                        archiveURL: archiveURL,
+                        to: destinationURL,
+                        folderName: folderName,
+                        progress: operationProgress
+                    )
+                }
+            }
+
+            result = .success(extractionFolder)
+
+        } catch {
+            result = .failure(error)
+        }
+
         if hasAccess {
             destinationURL.stopAccessingSecurityScopedResource()
         }
-    }
 
-    do {
+        DispatchQueue.main.async {
 
-        let extractionFolder: URL
+            isArchiveOperationInProgress = false
+            progressTracker.stop()
+            archiveOperationProgress = 0
 
-        if isRARArchive {
+            switch result {
 
-            if isSelection {
-                extractionFolder = try rarArchiveService.extractSelected(
-                    archiveURL: archiveURL,
-                    selectedPaths: selectedPaths,
-                    to: destinationURL,
-                    folderName: extractionFolderName
-                )
-            } else {
-                extractionFolder = try rarArchiveService.extract(
-                    archiveURL: archiveURL,
-                    to: destinationURL,
-                    folderName: extractionFolderName
-                )
-            }
+            case .success(let extractionFolder):
 
-        } else if isISOArchive {
+                let extractedFolderName =
+                    extractionFolder.lastPathComponent
 
-            if isSelection {
-                extractionFolder = try isoArchiveService.extractSelected(
-                    archiveURL: archiveURL,
-                    selectedPaths: selectedPaths,
-                    to: destinationURL,
-                    folderName: extractionFolderName
-                )
-            } else {
-                extractionFolder = try isoArchiveService.extract(
-                    archiveURL: archiveURL,
-                    to: destinationURL,
-                    folderName: extractionFolderName
-                )
-            }
+                if isSelection {
+                    selectedPaths.removeAll()
+                    isSelectionConfirmed = false
+                    isSelectionMode = false
 
-        } else {
+                    message = tr(
+                        "Выбранные элементы распакованы в папку \(extractedFolderName).",
+                        "Selected items extracted into \(extractedFolderName)."
+                    )
 
-            if isSelection {
-                extractionFolder = try archiveService.extractSelected(
-                    archiveURL: archiveURL,
-                    selectedPaths: selectedPaths,
-                    to: destinationURL,
-                    folderName: extractionFolderName
-                )
-            } else {
-                extractionFolder = try archiveService.extract(
-                    archiveURL: archiveURL,
-                    to: destinationURL,
-                    folderName: extractionFolderName
-                )
+                } else {
+
+                    message = tr(
+                        "Архив распакован в папку \(extractedFolderName).",
+                        "Archive extracted into \(extractedFolderName)."
+                    )
+                }
+
+            case .failure(let error):
+                showError(error)
             }
         }
-
-        let folderName = extractionFolder.lastPathComponent
-
-        if isSelection {
-            selectedPaths.removeAll()
-            isSelectionConfirmed = false
-            isSelectionMode = false
-
-            message = tr(
-                "Выбранные элементы распакованы в папку \(folderName).",
-                "Selected items extracted into \(folderName)."
-            )
-
-        } else {
-
-            message = tr(
-                "Архив распакован в папку \(folderName).",
-                "Archive extracted into \(folderName)."
-            )
-        }
-
-    } catch {
-        showError(error)
     }
 }
 
@@ -1902,14 +2025,7 @@ private func closeArchive() {
 
 private func createZIPArchive(at destinationFolderURL: URL) {
 
-    let hasAccess = destinationFolderURL
-        .startAccessingSecurityScopedResource()
-
-    defer {
-        if hasAccess {
-            destinationFolderURL.stopAccessingSecurityScopedResource()
-        }
-    }
+    guard !isArchiveOperationInProgress else { return }
 
     let cleanName = zipArchiveName
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1934,24 +2050,70 @@ private func createZIPArchive(at destinationFolderURL: URL) {
     let outputURL = destinationFolderURL
         .appendingPathComponent(fileName)
 
-    do {
-        let createdArchiveURL = try archiveService.createZIP(
-            from: selectedZIPFiles,
-            at: outputURL
-        )
+    let sourceFiles = selectedZIPFiles
+    let zipService = archiveService
 
-        let actualFileName = createdArchiveURL.lastPathComponent
+    let hasAccess = destinationFolderURL
+        .startAccessingSecurityScopedResource()
 
-        selectedZIPFiles = []
-        zipArchiveName = ""
+    let operationProgress = Progress(totalUnitCount: 1)
 
-        message = tr(
-            "ZIP-архив успешно создан: \(actualFileName)",
-            "ZIP archive successfully created: \(actualFileName)"
-        )
+    archiveOperationTitle = tr(
+        "Создание ZIP-архива…",
+        "Creating ZIP archive…"
+    )
 
-    } catch {
-        showError(error)
+    archiveOperationProgress = 0
+    isArchiveOperationInProgress = true
+
+    progressTracker.observe(operationProgress)
+
+    DispatchQueue.global(qos: .userInitiated).async {
+
+        let result: Result<URL, Error>
+
+        do {
+            let createdArchiveURL = try zipService.createZIP(
+                from: sourceFiles,
+                at: outputURL,
+                progress: operationProgress
+            )
+
+            result = .success(createdArchiveURL)
+
+        } catch {
+            result = .failure(error)
+        }
+
+        if hasAccess {
+            destinationFolderURL.stopAccessingSecurityScopedResource()
+        }
+
+        DispatchQueue.main.async {
+
+            isArchiveOperationInProgress = false
+            progressTracker.stop()
+            archiveOperationProgress = 0
+
+            switch result {
+
+            case .success(let createdArchiveURL):
+
+                let actualFileName =
+                    createdArchiveURL.lastPathComponent
+
+                selectedZIPFiles = []
+                zipArchiveName = ""
+
+                message = tr(
+                    "ZIP-архив успешно создан: \(actualFileName)",
+                    "ZIP archive successfully created: \(actualFileName)"
+                )
+
+            case .failure(let error):
+                showError(error)
+            }
+        }
     }
 }
 
@@ -3702,5 +3864,36 @@ private struct ArchiveOfficeView: UIViewControllerRepresentable {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+    }
+}
+
+@MainActor
+private final class ArchiveProgressTracker: ObservableObject {
+
+    @Published var progressValue = 0.0
+
+    private var observation: NSKeyValueObservation?
+
+    func observe(_ progress: Progress) {
+
+        observation?.invalidate()
+
+        observation = progress.observe(
+            \.fractionCompleted,
+            options: [.initial, .new]
+        ) { [weak self] progress, _ in
+
+            let value = progress.fractionCompleted
+
+            DispatchQueue.main.async {
+                self?.progressValue = value
+            }
+        }
+    }
+
+    func stop() {
+        observation?.invalidate()
+        observation = nil
+        progressValue = 0
     }
 }
