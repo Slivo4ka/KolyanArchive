@@ -173,7 +173,8 @@ struct HomeView: View {
  
 var body: some View {
     NavigationStack {
-        ZStack {
+        AnyView(
+            ZStack {
             Color(red: 0.035, green: 0.043, blue: 0.075)
                 .ignoresSafeArea()
 
@@ -211,6 +212,7 @@ var body: some View {
             
         zipCreationPreview
         }
+        )
         .toolbar(.hidden, for: .navigationBar)
         .fileImporter(
             isPresented: $isImporterPresented,
