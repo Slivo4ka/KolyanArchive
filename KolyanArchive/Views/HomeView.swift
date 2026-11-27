@@ -66,6 +66,8 @@ struct HomeView: View {
     @State private var isArchiveOperationInProgress = false
     @State private var archiveOperationProgress = 0.0
     @State private var archiveOperationTitle = ""
+    @State private var archiveOperationSuccessMessage: String? = nil
+    @State private var archiveOperationSuccessID = UUID()
     @StateObject private var progressTracker = ArchiveProgressTracker()
 
     @State private var backgroundEnteredAt: Date? = nil
@@ -188,7 +190,8 @@ var body: some View {
                         }
                     }
 
-                    if isArchiveOperationInProgress {
+                    if isArchiveOperationInProgress ||
+                        archiveOperationSuccessMessage != nil {
                         archiveProgressView
                     }
 
@@ -353,48 +356,102 @@ var body: some View {
     }
     
     private var archiveProgressView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(archiveOperationTitle)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
 
-                Spacer()
+        Group {
 
-                Text("\(Int(archiveOperationProgress * 100))%")
-                    .font(.system(size: 14, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
-            }
+            if let successMessage = archiveOperationSuccessMessage {
 
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.white.opacity(0.10))
+                HStack(spacing: 12) {
 
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.35, green: 0.65, blue: 1.0),
-                                    Color(red: 0.45, green: 0.45, blue: 1.0)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(
+                            Color(red: 0.30, green: 0.85, blue: 0.58)
                         )
-                        .frame(
-                            width: geometry.size.width
-                                * max(0, min(1, archiveOperationProgress))
-                        )
+
+                    Text(successMessage)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
                 }
+                .padding(16)
+                .background(.white.opacity(0.055))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+
+            } else {
+
+                VStack(alignment: .leading, spacing: 12) {
+
+                    HStack {
+                        Text(archiveOperationTitle)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.85))
+
+                        Spacer()
+
+                        Text("\(Int(max(0, min(1, archiveOperationProgress)) * 100))%")
+                            .font(.system(size: 14, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                    }
+
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(.white.opacity(0.10))
+
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.35, green: 0.65, blue: 1.0),
+                                            Color(red: 0.45, green: 0.45, blue: 1.0)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(
+                                    width: geometry.size.width
+                                        * max(0, min(1, archiveOperationProgress))
+                                )
+                        }
+                    }
+                    .frame(height: 7)
+                }
+                .padding(16)
+                .background(.white.opacity(0.055))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .transition(.opacity)
             }
-            .frame(height: 7)
         }
-        .padding(16)
-        .background(.white.opacity(0.055))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .animation(.easeInOut(duration: 0.2), value: archiveOperationProgress)
+        .animation(.easeInOut(duration: 0.25), value: archiveOperationProgress)
+        .animation(.easeInOut(duration: 0.25), value: archiveOperationSuccessMessage)
+    }
+    
+    private func showArchiveOperationSuccess(_ message: String) {
+
+        let notificationID = UUID()
+
+        archiveOperationSuccessID = notificationID
+
+        withAnimation(.easeInOut(duration: 0.25)) {
+            archiveOperationSuccessMessage = message
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+
+            guard archiveOperationSuccessID == notificationID else {
+                return
+            }
+
+            withAnimation(.easeInOut(duration: 0.25)) {
+                archiveOperationSuccessMessage = nil
+            }
+        }
     }
     
     // MARK: - Header
@@ -1974,6 +2031,16 @@ private func beginExtraction(
 
                 let extractedFolderName =
                     extractionFolder.lastPathComponent
+                    showArchiveOperationSuccess(
+                        tr(
+                            isSelection
+                                ? "Выбранные файлы из \(archiveName) распакованы успешно!"
+                                : "\(archiveName) распакован успешно!",
+                            isSelection
+                                ? "Selected files from \(archiveName) extracted successfully!"
+                                : "\(archiveName) extracted successfully!"
+                        )
+                    )
 
                 if isSelection {
                     selectedPaths.removeAll()
@@ -2101,14 +2168,17 @@ private func createZIPArchive(at destinationFolderURL: URL) {
 
                 let actualFileName =
                     createdArchiveURL.lastPathComponent
+                showArchiveOperationSuccess(
+                    tr(
+                        "ZIP-архив \(actualFileName) успешно создан!",
+                        "ZIP archive \(actualFileName) created successfully!"
+                    )
+                )
 
                 selectedZIPFiles = []
                 zipArchiveName = ""
 
-                message = tr(
-                    "ZIP-архив успешно создан: \(actualFileName)",
-                    "ZIP archive successfully created: \(actualFileName)"
-                )
+                message = ""
 
             case .failure(let error):
                 showError(error)
