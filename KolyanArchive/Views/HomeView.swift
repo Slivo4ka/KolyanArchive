@@ -262,12 +262,16 @@ var body: some View {
             allowsMultipleSelection: false
         ) { result in
             switch result {
-            case .success(let url):
+            case .success(let urls):
+                guard let folderURL = urls.first else { return }
+
                 if !selectedZIPFiles.contains(where: {
-                    $0.standardizedFileURL.path == url.standardizedFileURL.path
+                    $0.standardizedFileURL.path ==
+                    folderURL.standardizedFileURL.path
                 }) {
-                    selectedZIPFiles.append(url)
+                    selectedZIPFiles.append(folderURL)
                 }
+
             case .failure(let error):
                 showError(error)
             }
