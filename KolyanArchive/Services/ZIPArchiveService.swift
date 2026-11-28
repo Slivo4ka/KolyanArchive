@@ -703,6 +703,22 @@ struct ZIPArchiveService {
 
         return finalDestinationURL
     }
+    
+    // MARK: - Password protection detection
+
+    func containsEncryptedEntries(
+        in archiveURL: URL
+    ) throws -> Bool {
+
+        try validateArchive(archiveURL)
+
+        let reader = ArchiveReader()
+        let entries = try reader.entries(at: archiveURL)
+
+        return entries.contains {
+            $0.isDataEncrypted || $0.isMetadataEncrypted
+        }
+    }
 
     // MARK: - Validation
 
