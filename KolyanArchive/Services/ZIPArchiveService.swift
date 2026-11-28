@@ -1,6 +1,7 @@
 
 import Foundation
 import ZIPFoundation
+import LibArchive
 
 enum ArchiveServiceError: LocalizedError {
     case onlyZIPSupported
