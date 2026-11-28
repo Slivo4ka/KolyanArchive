@@ -142,7 +142,7 @@ struct ZIPArchiveService {
         password: String
     ) throws -> [ArchiveEntry] {
 
-        let reader = LibArchive.ArchiveReader(
+        let reader = ArchiveReader(
             passphrase: password
         )
 
