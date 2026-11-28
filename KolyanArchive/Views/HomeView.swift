@@ -1228,9 +1228,14 @@ private func zipSourceRow(_ url: URL) -> some View {
             )
         }
 
+        let password = url.standardizedFileURL == archiveURL?.standardizedFileURL
+            ? activeArchivePassword
+            : nil
+
         return try archiveService.listContents(
             of: url,
-            in: directoryPath
+            in: directoryPath,
+            password: password
         )
     }
 
