@@ -94,6 +94,7 @@ struct HomeView: View {
     @State private var isPasswordPromptPresented = false
     @State private var archivePassword = ""
     @State private var pendingPasswordArchiveURL: URL? = nil
+    @State private var activeArchivePassword: String? = nil
     
     // Создание ZIP-архива
     
@@ -1833,6 +1834,7 @@ private func openImage(_ entry: ArchiveEntry) {
             archiveName = url.lastPathComponent
             currentDirectoryPath = ""
             entries = newEntries
+            activeArchivePassword = archivePassword
 
             message = newEntries.isEmpty
                 ? tr("Архив пуст.", "Archive is empty.")
@@ -2173,6 +2175,7 @@ private func beginExtraction(
 
     let selectedPathsSnapshot = selectedPaths
     let folderName = extractionFolderName
+    let passwordSnapshot = activeArchivePassword
 
     let operationProgress = Progress(totalUnitCount: 1)
 
@@ -2257,14 +2260,16 @@ private func beginExtraction(
                         selectedPaths: selectedPathsSnapshot,
                         to: destinationURL,
                         folderName: folderName,
-                        progress: operationProgress
+                        progress: operationProgress,
+                        password: passwordSnapshot
                     )
                 } else {
                     extractionFolder = try zipService.extract(
                         archiveURL: archiveURL,
                         to: destinationURL,
                         folderName: folderName,
-                        progress: operationProgress
+                        progress: operationProgress,
+                        password: passwordSnapshot
                     )
                 }
             }
@@ -2342,6 +2347,9 @@ private func closeArchive() {
 
     archiveURL = nil
     archiveName = tr("Архив не выбран", "No archive selected")
+    activeArchivePassword = nil
+    archivePassword = ""
+    pendingPasswordArchiveURL = nil
     currentDirectoryPath = ""
     entries = []
     activeGallery = nil

@@ -298,8 +298,21 @@ struct ZIPArchiveService {
         archiveURL: URL,
         to destinationURL: URL,
         folderName: String,
-        progress: Progress? = nil
+        progress: Progress? = nil,
+        password: String? = nil
     ) throws -> URL {
+    
+        if let password {
+            try validateArchive(archiveURL)
+
+            return try extractUsingLibArchive(
+                archiveURL: archiveURL,
+                to: destinationURL,
+                folderName: folderName,
+                password: password,
+                progress: progress
+            )
+        }
 
         try validateArchive(archiveURL)
 
@@ -395,8 +408,22 @@ struct ZIPArchiveService {
         selectedPaths: Set<String>,
         to destinationURL: URL,
         folderName: String,
-        progress: Progress? = nil
+        progress: Progress? = nil,
+        password: String? = nil
     ) throws -> URL {
+    
+        if let password {
+            try validateArchive(archiveURL)
+
+            return try extractUsingLibArchive(
+                archiveURL: archiveURL,
+                to: destinationURL,
+                folderName: folderName,
+                password: password,
+                selectedPaths: selectedPaths,
+                progress: progress
+            )
+        }
 
         try validateArchive(archiveURL)
 
@@ -608,6 +635,260 @@ struct ZIPArchiveService {
             return outputURL
         } catch {
             try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
+    }
+    
+    // MARK: - Password-protected ZIP extraction
+
+    private func extractUsingLibArchive(
+        archiveURL: URL,
+        to destinationURL: URL,
+        folderName: String,
+        password: String,
+        selectedPaths: Set<String>? = nil,
+        progress: Progress? = nil
+    ) throws -> URL {
+
+        let reader = ArchiveReader(passphrase: password)
+        let archiveEntries = try reader.entries(at: archiveURL)
+
+        var targetPaths: [String: String] = [:]
+
+        // Подготавливаем список файлов для распаковки.
+
+        if let selectedPaths {
+            guard !selectedPaths.isEmpty else {
+                throw ArchiveServiceError.noSelectedEntries
+            }
+
+            let selections = try Set(
+                selectedPaths.map { try normalizedPath($0) }
+            )
+
+            var selectedFolders = Set<String>()
+
+            for entry in archiveEntries {
+                let path = try normalizedPath(entry.path)
+
+                if entry.fileType == .symbolicLink ||
+                    entry.fileType == .hardLink {
+                    throw ArchiveServiceError.symbolicLinkNotAllowed
+                }
+            }
+
+            for selected in selections {
+                let isFolder = archiveEntries.contains {
+                    (try? normalizedPath($0.path)) == selected &&
+                    $0.fileType == .directory
+                } || archiveEntries.contains {
+                    (try? normalizedPath($0.path))?
+                        .hasPrefix(selected + "/") == true
+                }
+
+                if isFolder {
+                    selectedFolders.insert(selected)
+                }
+            }
+
+            let effectiveSelections = selections.filter { selected in
+                !selectedFolders.contains { folder in
+                    folder != selected &&
+                    selected.hasPrefix(folder + "/")
+                }
+            }
+
+            selectedFolders = selectedFolders.intersection(
+                effectiveSelections
+            )
+
+            for entry in archiveEntries {
+                let path = try normalizedPath(entry.path)
+
+                let matchingFolder = selectedFolders
+                    .filter {
+                        path == $0 ||
+                        path.hasPrefix($0 + "/")
+                    }
+                    .max {
+                        $0.count < $1.count
+                    }
+
+                if let folder = matchingFolder {
+                    let name = URL(
+                        fileURLWithPath: folder
+                    ).lastPathComponent
+
+                    let suffix = path == folder
+                        ? ""
+                        : String(path.dropFirst(folder.count + 1))
+
+                    let targetPath = suffix.isEmpty
+                        ? name
+                        : name + "/" + suffix
+
+                    targetPaths[path] = targetPath
+
+                } else if effectiveSelections.contains(path),
+                          entry.fileType == .regular {
+
+                    targetPaths[path] = URL(
+                        fileURLWithPath: path
+                    ).lastPathComponent
+                }
+            }
+
+            guard !targetPaths.isEmpty else {
+                throw ArchiveServiceError.noSelectedEntries
+            }
+
+        } else {
+
+            for entry in archiveEntries {
+                let path = try normalizedPath(entry.path)
+
+                if entry.fileType == .symbolicLink ||
+                    entry.fileType == .hardLink {
+                    throw ArchiveServiceError.symbolicLinkNotAllowed
+                }
+
+                guard entry.fileType == .regular ||
+                      entry.fileType == .directory else {
+                    throw ArchiveServiceError.unsafeArchivePath(path)
+                }
+
+                targetPaths[path] = path
+            }
+        }
+
+        let outputFolder = try createUniqueArchiveFolder(
+            folderName: folderName,
+            inside: destinationURL
+        )
+
+        var fileHandles: [String: FileHandle] = [:]
+
+        defer {
+            for handle in fileHandles.values {
+                try? handle.close()
+            }
+        }
+
+        do {
+            let totalSize = archiveEntries.reduce(Int64(0)) {
+                total, entry in
+
+                guard entry.fileType == .regular,
+                      let path = try? normalizedPath(entry.path),
+                      targetPaths[path] != nil else {
+                    return total
+                }
+
+                return total + max(0, entry.size)
+            }
+
+            if let progress {
+                progress.totalUnitCount = max(1, totalSize)
+                progress.completedUnitCount = 0
+            }
+
+            try reader.readDataBlocks(
+                in: archiveURL,
+                selecting: { entry in
+
+                    let sourcePath = try normalizedPath(entry.path)
+
+                    guard targetPaths[sourcePath] != nil else {
+                        return .skip
+                    }
+
+                    let targetPath = try normalizedPath(
+                        targetPaths[sourcePath]!
+                    )
+
+                    let targetURL = try safeTargetURL(
+                        targetPath,
+                        inside: outputFolder
+                    )
+
+                    if entry.fileType == .directory {
+                        try FileManager.default.createDirectory(
+                            at: targetURL,
+                            withIntermediateDirectories: true
+                        )
+
+                        return .skip
+                    }
+
+                    guard entry.fileType == .regular else {
+                        throw ArchiveServiceError.symbolicLinkNotAllowed
+                    }
+
+                    try FileManager.default.createDirectory(
+                        at: targetURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+
+                    guard !FileManager.default.fileExists(
+                        atPath: targetURL.path
+                    ) else {
+                        throw ArchiveServiceError.destinationFileExists(
+                            targetPath
+                        )
+                    }
+
+                    guard FileManager.default.createFile(
+                        atPath: targetURL.path,
+                        contents: nil
+                    ) else {
+                        throw ArchiveServiceError.archiveNotFound
+                    }
+
+                    fileHandles[sourcePath] = try FileHandle(
+                        forWritingTo: targetURL
+                    )
+
+                    return .read
+
+                },
+                didFinishEntry: { entry, _ in
+
+                    let path = try normalizedPath(entry.path)
+
+                    if let handle = fileHandles.removeValue(
+                        forKey: path
+                    ) {
+                        try handle.close()
+                    }
+
+                },
+                { entry, block in
+
+                    let path = try normalizedPath(entry.path)
+
+                    guard let handle = fileHandles[path] else {
+                        return .finishEntry
+                    }
+
+                    guard block.offset >= 0 else {
+                        throw ArchiveServiceError.unsafeArchivePath(path)
+                    }
+
+                    try handle.seek(toOffset: UInt64(block.offset))
+                    try handle.write(contentsOf: block.data)
+
+                    progress?.completedUnitCount += Int64(
+                        block.data.count
+                    )
+
+                    return .continueReading
+                }
+            )
+
+            return outputFolder
+
+        } catch {
+            try? FileManager.default.removeItem(at: outputFolder)
             throw error
         }
     }
@@ -839,15 +1120,18 @@ struct ZIPArchiveService {
         }
 
         func rejectSymlink(_ url: URL) throws {
-            guard let attributes = try? fileManager.attributesOfItem(
-                atPath: url.path
-            ),
-            let type = attributes[.type] as? FileAttributeType,
-            type == .typeSymbolicLink else {
+            guard fileManager.fileExists(atPath: url.path) else {
                 return
             }
 
-            throw ArchiveServiceError.symbolicLinkInDestination
+            let attributes = try fileManager.attributesOfItem(
+                atPath: url.path
+            )
+
+            if let type = attributes[.type] as? FileAttributeType,
+               type == .typeSymbolicLink {
+                throw ArchiveServiceError.symbolicLinkInDestination
+            }
         }
 
         try rejectSymlink(destination)
