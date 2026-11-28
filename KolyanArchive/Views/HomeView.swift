@@ -242,6 +242,37 @@ var body: some View {
         } message: {
             Text(errorMessage)
         }
+        
+        .alert(
+            tr("Архив защищён паролем", "Password-protected archive"),
+            isPresented: $isPasswordPromptPresented
+        ) {
+            SecureField(
+                tr("Введите пароль", "Enter password"),
+                text: $archivePassword
+            )
+
+            Button(
+                tr("Открыть", "Open")
+            ) {
+                openPasswordProtectedArchive()
+            }
+
+            Button(
+                tr("Отмена", "Cancel"),
+                role: .cancel
+            ) {
+                pendingPasswordArchiveURL = nil
+                archivePassword = ""
+            }
+        } message: {
+            Text(
+                tr(
+                    "Для открытия этого ZIP-архива нужен пароль.",
+                    "Enter the password to open this ZIP archive."
+                )
+            )
+        }
 
         .fileImporter(
             isPresented: $isZIPFilesImporterPresented,
@@ -1780,7 +1811,41 @@ private func openImage(_ entry: ArchiveEntry) {
             showError(error)
         }
     }
-// MARK: - Archive information
+    
+    private func openPasswordProtectedArchive() {
+        guard let url = pendingPasswordArchiveURL else {
+            return
+        }
+
+        do {
+            let newEntries = try archiveService.listContents(
+                of: url,
+                password: archivePassword
+            )
+
+            searchText = ""
+            searchResults = []
+            isSelectionMode = false
+            selectedPaths.removeAll()
+
+            activeGallery = nil
+            archiveURL = url
+            archiveName = url.lastPathComponent
+            currentDirectoryPath = ""
+            entries = newEntries
+
+            message = newEntries.isEmpty
+                ? tr("Архив пуст.", "Archive is empty.")
+                : ""
+
+            pendingPasswordArchiveURL = nil
+
+        } catch {
+            showError(error)
+        }
+    }
+    
+    // MARK: - Archive information
 
     private func showArchiveInfo() {
         guard let archiveURL else { return }
