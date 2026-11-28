@@ -61,10 +61,19 @@ struct ZIPArchiveService {
 
     func listContents(
         of archiveURL: URL,
-        in directoryPath: String = ""
+        in directoryPath: String = "",
+        password: String? = nil
     ) throws -> [ArchiveEntry] {
 
         try validateArchive(archiveURL)
+
+        if let password {
+            return try listContentsUsingLibArchive(
+                of: archiveURL,
+                in: directoryPath,
+                password: password
+            )
+        }
 
         let archive = try Archive(
             url: archiveURL,
@@ -122,6 +131,78 @@ struct ZIPArchiveService {
             if $0.isDirectory != $1.isDirectory {
                 return $0.isDirectory
             }
+            return $0.name.localizedStandardCompare($1.name)
+                == .orderedAscending
+        }
+    }
+    
+    private func listContentsUsingLibArchive(
+        of archiveURL: URL,
+        in directoryPath: String,
+        password: String
+    ) throws -> [ArchiveEntry] {
+
+        let reader = LibArchive.ArchiveReader(
+            passphrase: password
+        )
+
+        let entries = try reader.entries(at: archiveURL)
+
+        var items: [String: ArchiveEntry] = [:]
+
+        let normalizedDirectory = directoryPath
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        let prefix = normalizedDirectory.isEmpty
+            ? ""
+            : normalizedDirectory + "/"
+
+        for entry in entries {
+            let path = entry.path.trimmingCharacters(
+                in: CharacterSet(charactersIn: "/")
+            )
+
+            guard path.hasPrefix(prefix) else { continue }
+
+            let remainder = String(path.dropFirst(prefix.count))
+            guard !remainder.isEmpty else { continue }
+
+            let components = remainder.split(separator: "/")
+            guard let first = components.first else { continue }
+
+            let childPath = prefix + String(first)
+
+            if components.count > 1 ||
+                entry.fileType == .directory {
+
+                if items[childPath] == nil {
+                    items[childPath] = ArchiveEntry(
+                        id: childPath,
+                        path: childPath,
+                        sizeDescription: "Папка",
+                        isDirectory: true
+                    )
+                }
+
+            } else {
+                items[childPath] = ArchiveEntry(
+                    id: childPath,
+                    path: childPath,
+                    sizeDescription: ByteCountFormatter.string(
+                        fromByteCount: entry.size,
+                        countStyle: .file
+                    ),
+                    isDirectory: false,
+                    sizeInBytes: entry.size
+                )
+            }
+        }
+
+        return items.values.sorted {
+            if $0.isDirectory != $1.isDirectory {
+                return $0.isDirectory
+            }
+
             return $0.name.localizedStandardCompare($1.name)
                 == .orderedAscending
         }
