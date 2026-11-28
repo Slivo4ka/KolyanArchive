@@ -89,6 +89,12 @@ struct HomeView: View {
     @State private var errorMessage = ""
     @State private var showingError = false
     
+    // Защищённые ZIP-архивы
+
+    @State private var isPasswordPromptPresented = false
+    @State private var archivePassword = ""
+    @State private var pendingPasswordArchiveURL: URL? = nil
+    
     // Создание ZIP-архива
     
     @State private var isCreatingZIPPreview = false
@@ -1741,9 +1747,18 @@ private func openImage(_ entry: ArchiveEntry) {
                 to: copiedURL
             )
 
-            let newEntries = try listArchiveContents(
-                of: copiedURL
-            )
+            if copiedURL.pathExtension.lowercased() == "zip",
+                try archiveService.containsEncryptedEntries(in: copiedURL) {
+
+                    pendingPasswordArchiveURL = copiedURL
+                    archivePassword = ""
+                    isPasswordPromptPresented = true
+                    return
+                }
+
+                let newEntries = try listArchiveContents(
+                    of: copiedURL
+                )
 
 
             searchText = ""
