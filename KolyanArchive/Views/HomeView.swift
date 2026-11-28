@@ -1658,6 +1658,8 @@ private func openImage(_ entry: ArchiveEntry) {
                 )
             }
         }
+        .disabled(archiveURL != nil)
+        .opacity(archiveURL != nil ? 0.4 : 1.0)
     }
 
     private func featureCard(
