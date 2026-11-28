@@ -210,7 +210,6 @@ var body: some View {
                 .animation(.easeInOut(duration: 0.25), value: archiveURL)
             }
             
-        zipCreationPreview
         }
         )
         .toolbar(.hidden, for: .navigationBar)
@@ -376,130 +375,113 @@ var body: some View {
     }
 }
 
-@ViewBuilder
-private var zipCreationPreview: some View {
-    if isCreatingZIPPreview {
-        Color.black.opacity(0.75)
-            .ignoresSafeArea()
+private var zipCreationContent: some View {
+    VStack(alignment: .leading, spacing: 16) {
 
-        VStack(spacing: 18) {
-            HStack {
-                Text(tr("Создание ZIP", "Create ZIP"))
-                    .font(.title2.bold())
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                Button {
-                    isCreatingZIPPreview = false
-                    selectedZIPFiles = []
-                    zipArchiveName = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 27))
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.plain)
-            }
+        HStack {
+            Text(tr("Создание ZIP", "Create ZIP"))
+                .font(.headline)
+                .foregroundStyle(.white)
 
             Spacer()
 
-            if selectedZIPFiles.isEmpty {
-                Text(
-                    tr(
-                        "Добавь файлы или папки для архива",
-                        "Add files or folders to the archive"
-                    )
-                )
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.55))
-                .multilineTextAlignment(.center)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(selectedZIPFiles, id: \.path) { url in
-                            zipSourceRow(url)
-                        }
-                    }
-                }
-            }
-
-            HStack(spacing: 12) {
-                Button {
-                    isZIPFilesImporterPresented = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.badge.plus")
-                        Text(tr("Добавить файлы", "Add files"))
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        .white.opacity(0.08),
-                        in: RoundedRectangle(cornerRadius: 14)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    isZIPFolderImporterPresented = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder.badge.plus")
-                        Text(tr("Добавить папку", "Add folder"))
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        .white.opacity(0.08),
-                        in: RoundedRectangle(cornerRadius: 14)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-
             Button {
-                guard !selectedZIPFiles.isEmpty else { return }
-                isNamingZIP = true
+                isCreatingZIPPreview = false
+                selectedZIPFiles = []
+                zipArchiveName = ""
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "doc.zipper")
-                    Text(tr(
-                        "Продолжить создание ZIP",
-                        "Continue creating ZIP"
-                    ))
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.red.opacity(0.85))
+            }
+            .buttonStyle(.plain)
+        }
+
+        if selectedZIPFiles.isEmpty {
+            Text(
+                tr(
+                    "Добавь файлы или папки для архива",
+                    "Add files or folders to the archive"
+                )
+            )
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.55))
+            .frame(maxWidth: .infinity, minHeight: 140)
+            .multilineTextAlignment(.center)
+
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(selectedZIPFiles, id: \.path) { url in
+                        zipSourceRow(url)
+                    }
                 }
-                .font(.system(size: 15, weight: .semibold))
+            }
+            .frame(maxHeight: 220)
+        }
+
+        HStack(spacing: 12) {
+            Button {
+                isZIPFilesImporterPresented = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.badge.plus")
+                    Text(tr("Добавить файлы", "Add files"))
+                }
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, 14)
                 .background(
-                    selectedZIPFiles.isEmpty
-                        ? Color.white.opacity(0.05)
-                        : Color.blue.opacity(0.75),
+                    .white.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 14)
                 )
             }
             .buttonStyle(.plain)
-            .disabled(selectedZIPFiles.isEmpty)
+
+            Button {
+                isZIPFolderImporterPresented = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "folder.badge.plus")
+                    Text(tr("Добавить папку", "Add folder"))
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    .white.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+            }
+            .buttonStyle(.plain)
         }
-        .padding(22)
-        .frame(maxWidth: .infinity, maxHeight: 520)
-        .background(
-            Color(red: 0.07, green: 0.08, blue: 0.13),
-            in: RoundedRectangle(cornerRadius: 24)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        )
-        .padding(20)
-        .transition(.scale.combined(with: .opacity))
-        .zIndex(10)
+
+        Button {
+            guard !selectedZIPFiles.isEmpty else { return }
+            isNamingZIP = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "doc.zipper")
+                Text(tr(
+                    "Продолжить создание ZIP",
+                    "Continue creating ZIP"
+                ))
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                selectedZIPFiles.isEmpty
+                    ? Color.white.opacity(0.05)
+                    : Color.blue.opacity(0.75),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedZIPFiles.isEmpty)
     }
 }
 
@@ -831,6 +813,9 @@ private func zipSourceRow(_ url: URL) -> some View {
 
     private var archiveContents: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if isCreatingZIPPreview {
+                zipCreationContent
+            } else {
 
             
             VStack(spacing: 10) {
@@ -1170,6 +1155,7 @@ private func zipSourceRow(_ url: URL) -> some View {
                     }
                 }
             }
+        }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
