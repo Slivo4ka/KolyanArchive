@@ -9,8 +9,8 @@ packages:
     url: https://github.com/weichsel/ZIPFoundation
     from: 0.9.21
   LibArchive:
-    url: https://github.com/kmworks/libarchive-swift
-    from: 0.1.6
+    url: https://github.com/Slivo4ka/libarchive-swift
+    branch: password-support
 
 targets:
   KolyanArchive:
