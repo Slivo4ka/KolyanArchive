@@ -508,9 +508,9 @@ private func zipSourceRow(_ url: URL) -> some View {
                 url.standardizedFileURL.path
             }
         } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 20))
-                .foregroundStyle(.white.opacity(0.45))
+            Image(systemName: "trash")
+                .font(.system(size: 19))
+                .foregroundStyle(.white.opacity(0.55))
         }
         .buttonStyle(.plain)
     }
